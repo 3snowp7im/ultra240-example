@@ -1,0 +1,11 @@
+$input a_position
+
+uniform vec4 v_cam;
+uniform vec4 v_map;
+uniform vec4 v_ratio;
+
+void main() {
+  vec2 pix_pos = a_position.xy - v_map.xy * 16 - v_cam.xy;
+  vec2 view_pos = (pix_pos - vec2(128, 120)) / vec2(256, -240);
+  gl_Position = vec4(view_pos * 2 * v_ratio.xy, 0, 1);
+}

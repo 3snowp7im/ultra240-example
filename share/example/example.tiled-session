@@ -1,0 +1,102 @@
+{
+    "Map/SizeTest": {
+        "height": 4300,
+        "width": 2
+    },
+    "activeFile": "world/alpha/alpha.tmx",
+    "expandedProjectPaths": [
+        "tileset",
+        ".",
+        "world/alpha",
+        "world"
+    ],
+    "fileStates": {
+        "tileset/alpha.tsx": {
+            "scaleInDock": 3,
+            "scaleInEditor": 4
+        },
+        "tileset/bounds.tsx": {
+            "scaleInDock": 4,
+            "scaleInEditor": 5.5
+        },
+        "tileset/skeleton.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 5.5
+        },
+        "tileset/victor.tsx": {
+            "scaleInDock": 1,
+            "scaleInEditor": 5.5
+        },
+        "world/alpha/alpha.tmx": {
+            "expandedObjectLayers": [
+                5
+            ],
+            "scale": 4,
+            "selectedLayer": 4,
+            "viewCenter": {
+                "x": 134.875,
+                "y": 310
+            }
+        },
+        "world/alpha/alpha.tsx": {
+            "scaleInDock": 4,
+            "scaleInEditor": 8
+        },
+        "world/alpha/beta.tmx": {
+            "scale": 5.5,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 255.90909090909093,
+                "y": 120.09090909090911
+            }
+        },
+        "world/alpha/zeta.tmx": {
+            "scale": 3,
+            "selectedLayer": 2,
+            "viewCenter": {
+                "x": 128.16666666666666,
+                "y": 1023.8333333333333
+            }
+        }
+    },
+    "frame.defaultDuration": 2000,
+    "last.externalTilesetPath": "/home/mouse/src/ultra240-example/share/example/tileset",
+    "last.imagePath": "/home/mouse/src/ultra240-example/share/example/img",
+    "last.worldFilePath": "/home/mouse/src/ultra240-example/share/example/world/alpha",
+    "loadedWorlds": [
+        "/home/mouse/src/ultra240-example/share/example/world/alpha/alpha.world"
+    ],
+    "map.height": 1024,
+    "map.lastUsedFormat": "tmx",
+    "map.tileHeight": 16,
+    "map.tileWidth": 16,
+    "map.width": 16,
+    "mapScene.enableWorlds": true,
+    "openFiles": [
+        "world/alpha/alpha.tmx",
+        "world/alpha/beta.tmx",
+        "world/alpha/zeta.tmx",
+        "tileset/victor.tsx",
+        "tileset/skeleton.tsx",
+        "tileset/alpha.tsx",
+        "tileset/bounds.tsx"
+    ],
+    "project": "example.tiled-project",
+    "property.type": "string",
+    "recentFiles": [
+        "tileset/bounds.tsx",
+        "tileset/alpha.tsx",
+        "tileset/skeleton.tsx",
+        "tileset/victor.tsx",
+        "world/alpha/zeta.tmx",
+        "world/alpha/beta.tmx",
+        "world/alpha/alpha.tmx",
+        "world/alpha/alpha.tsx"
+    ],
+    "tileset.lastUsedFormat": "tsx",
+    "tileset.spacing": 1,
+    "tileset.tileSize": {
+        "height": 50,
+        "width": 50
+    }
+}

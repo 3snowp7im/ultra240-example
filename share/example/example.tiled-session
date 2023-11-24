@@ -34,8 +34,8 @@
             "scale": 4,
             "selectedLayer": 4,
             "viewCenter": {
-                "x": 134.875,
-                "y": 310
+                "x": 255.875,
+                "y": 271.875
             }
         },
         "world/alpha/alpha.tsx": {

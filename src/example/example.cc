@@ -146,10 +146,25 @@ void render(
   const ultra::Entity& victor,
   const ultra::geometry::Vector<float> victor_pos,
   const std::vector<ultra::Entity*>& entities,
+  const std::vector<const ultra::renderer::EntityHandle*>& entity_handles,
   bool advance_time = true
 ) {
   // Render frame.
-  ultra::renderer::render(advance_time);
+  ultra::renderer::clear();
+  ssize_t layer_count;
+  for (layer_count = 0;
+       layer_count < map.layers.size()
+         && map.layers[layer_count].name == ultra::hash("background"_h);
+       layer_count++);
+  ultra::renderer::render_tile_layers(0, layer_count);
+  ultra::renderer::render_entities(entity_handles, layer_count);
+  ultra::renderer::render_tile_layers(
+    layer_count,
+    map.layers.size() - layer_count
+  );
+  if (advance_time) {
+    ultra::renderer::advance();
+  }
 
   // Draw texture as quad.
   bgfx::setState(
@@ -466,9 +481,11 @@ int main() {
   );
 
   // Load player entity.
-  auto victor_entity_handle = ultra::renderer::load_entities(
-    {victor.get()},
-    {victor_tileset_handle}
+  loaded_entity_handles.push_back(
+    ultra::renderer::load_entities(
+      {victor.get()},
+      {victor_tileset_handle}
+    )
   );
 
   // Clear the view.
@@ -539,9 +556,18 @@ int main() {
           platforms.clear();
           map_entities.clear();
           map_entities.resize(map.entities.size());
-          ultra::renderer::unload_entities(loaded_entity_handles);
+          std::vector<const ultra::renderer::EntityHandle*> map_entity_handles;
+          std::copy(
+            std::next(loaded_entity_handles.begin()),
+            loaded_entity_handles.end(),
+            std::back_inserter(map_entity_handles)
+          );
+          ultra::renderer::unload_entities(map_entity_handles);
           loaded_entities.clear();
-          loaded_entity_handles.clear();
+          loaded_entity_handles.erase(
+            std::next(loaded_entity_handles.begin()),
+            loaded_entity_handles.end()
+          );
           auto pos = victor_pos - map.position;
           if (pos.x < 16 * map.size.x / 2) {
             entity_window.x.min = 0;
@@ -912,7 +938,14 @@ int main() {
         dbg_line = txt_top;
         if (!advance) {
           print_debug_text(victor_pos, map, state);
-          render(map, *victor, victor_pos, loaded_entities, false);
+          render(
+            map,
+            *victor,
+            victor_pos,
+            loaded_entities,
+            loaded_entity_handles,
+            false
+          );
         }
       }
     } while (frame_advancing && !advance && !quit);
@@ -1196,11 +1229,13 @@ int main() {
 
     // Render frame.
     print_debug_text(victor_pos, map, state);
-    render(map, *victor, victor_pos, loaded_entities);
+    render(map, *victor, victor_pos, loaded_entities, loaded_entity_handles);
   }
 
   // Free resources.
   ultra::renderer::unload_world();
+  ultra::renderer::unload_entities({loaded_entity_handles[0]});
+  ultra::renderer::unload_tilesets({victor_tileset_handle});
   ultra::quit();
   bgfx::destroy(box_vertex_buffer);
   bgfx::destroy(quad_index_buffer);

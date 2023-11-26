@@ -5,10 +5,10 @@
     },
     "activeFile": "world/alpha/alpha.tmx",
     "expandedProjectPaths": [
-        "tileset",
-        ".",
         "world/alpha",
-        "world"
+        ".",
+        "world",
+        "tileset"
     ],
     "fileStates": {
         "tileset/alpha.tsx": {
@@ -34,8 +34,8 @@
             "scale": 4,
             "selectedLayer": 4,
             "viewCenter": {
-                "x": 255.875,
-                "y": 271.875
+                "x": 134.625,
+                "y": 309.5
             }
         },
         "world/alpha/alpha.tsx": {

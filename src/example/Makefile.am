@@ -31,6 +31,7 @@ CLEANFILES = $(SHADER_SRCS)
 bin_PROGRAMS = example
 example_SOURCES = example.cc
 example_CXXFLAGS = \
+	$(GLM_CFLAGS) \
 	$(ULTRA_CFLAGS) \
 	$(SDL2_CFLAGS) \
 	$(WAYLAND_CFLAGS) \
@@ -39,7 +40,11 @@ example_CXXFLAGS = \
 	-I$(top_srcdir)/src/bx/include \
 	$(DEBUG_FLAGS)
 
-example_LDADD = $(ULTRA_LIBS) $(SDL2_LIBS) $(WAYLAND_LIBS)
+example_LDADD = \
+	$(GLM_LIBS) \
+	$(ULTRA_LIBS) \
+	$(SDL2_LIBS) \
+	$(WAYLAND_LIBS)
 example_LDFLAGS = -L$(BGFX_BIN_DIR) -l$(BGFX_LIB)
 example_DEPENDENCIES = \
 	$(BGFX_BIN_DIR)/lib$(BGFX_LIB).so \

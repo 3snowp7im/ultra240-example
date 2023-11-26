@@ -1,6 +1,8 @@
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
 #include <bx/debug.h>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/matrix_transform_2d.hpp>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -1217,6 +1219,14 @@ int main() {
         .build()
       );
     }
+
+    // Apply rendering transformations.
+    auto transform = glm::mat3(1.f);
+    memcpy(
+      &victor->transform[0],
+      glm::value_ptr(transform),
+      sizeof(victor->transform)
+    );
 
     // Get new player position.
     victor_pos = victor->position

@@ -1,6 +1,5 @@
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
-#include <bx/debug.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/matrix_transform_2d.hpp>
 #include <memory>
@@ -11,6 +10,10 @@
 #include <thread>
 #include <ultra240/ultra.h>
 #include <wayland-egl.h>
+
+#ifdef BX_CONFIG_DEBUG
+#include <bx/debug.h>
+#endif
 
 namespace shader {
 #include "shader/vs_pass.c"

@@ -804,24 +804,24 @@ int main() {
           break;
         case SDL_KEYDOWN:
           if (!sdl_event.key.repeat) {
-            switch (sdl_event.key.keysym.sym) {
-            case SDLK_q:
-              quit = true;
-              break;
-            case SDLK_UP:
+            switch (sdl_event.key.keysym.scancode) {
+            case SDL_SCANCODE_W:
               input.up = true;
               break;
-            case SDLK_DOWN:
+            case SDL_SCANCODE_S:
               input.down = true;
               break;
-            case SDLK_LEFT:
+            case SDL_SCANCODE_A:
               input.left = true;
               break;
-            case SDLK_RIGHT:
+            case SDL_SCANCODE_D:
               input.right = true;
               break;
-            case SDLK_SPACE:
+            case SDL_SCANCODE_SPACE:
               input.jump = true;
+              break;
+            case SDL_SCANCODE_Q:
+              quit = true;
               break;
             }
             break;
@@ -829,30 +829,30 @@ int main() {
           break;
         case SDL_KEYUP:
           if (!sdl_event.key.repeat) {
-            switch (sdl_event.key.keysym.sym) {
-            case SDLK_UP:
+            switch (sdl_event.key.keysym.scancode) {
+            case SDL_SCANCODE_W:
               input.up = false;
               break;
-            case SDLK_DOWN:
+            case SDL_SCANCODE_S:
               input.down = false;
               break;
-            case SDLK_LEFT:
+            case SDL_SCANCODE_A:
               input.left = false;
               break;
-            case SDLK_RIGHT:
+            case SDL_SCANCODE_D:
               input.right = false;
               break;
-            case SDLK_SPACE:
+            case SDL_SCANCODE_SPACE:
               input.jump = false;
               break;
             // Debugging keys.
-            case SDLK_a:
+            case SDL_SCANCODE_N:
               advance = true;
               break;
-            case SDLK_b:
+            case SDL_SCANCODE_B:
               render_collision_boxes = !render_collision_boxes;
               break;
-            case SDLK_f:
+            case SDL_SCANCODE_F:
               frame_advancing = !frame_advancing;
               if (frame_advancing) {
                 advance = true;

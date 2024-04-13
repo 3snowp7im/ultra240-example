@@ -11,7 +11,7 @@
 #include <ultra240/ultra.h>
 #include <wayland-egl.h>
 
-#ifdef BX_CONFIG_DEBUG
+#ifndef NDEBUG
 #include <bx/debug.h>
 #endif
 
@@ -49,27 +49,34 @@ struct PlayerState {
 static int dbg_line;
 static int txt_top;
 static int txt_left;
+
+#ifndef NDEBUG
 #define DEBUG(...) bgfx::dbgTextPrintf(txt_left, dbg_line++, 0x0e, __VA_ARGS__);
+#else
+#define DEBUG(...)
+#endif
 
 void print_debug_text(
   const ultra::geometry::Vector<float>& player_pos,
   const ultra::World::Map& map,
   const PlayerState& state
 ) {
-  DEBUG("Move: arrow keys or directional pad");
+  DEBUG("Move: <wasd> or directional pad");
   DEBUG("Jump: space bar or face button");
   DEBUG("Pause: <f>");
-  DEBUG("Frame advance: <a> (while paused)");
+  DEBUG("Frame advance: <n> (while paused)");
   DEBUG("Show collision boxes: <b>");
   DEBUG("Quit: <q>");
   DEBUG("Player position: %s", player_pos.to_string().c_str());
   DEBUG("Camera position: %s", camera_pos.to_string().c_str());
   DEBUG("Map position: %s", map.position.to_string().c_str());
+  std::string ground;
   if (state.grounded) {
-    DEBUG("Ground: %s", state.floor.as<int>().to_string().c_str());
+    ground = state.floor.as<int>().to_string();
   } else {
-    DEBUG("Ground: (nil)");
+    ground = "(nil)";
   }
+  DEBUG("Ground: %s", ground.c_str());
 }
 
 enum ButtonIndex {
@@ -1247,7 +1254,7 @@ int main() {
 
   // Free resources.
   ultra::renderer::unload_world();
-  ultra::renderer::unload_entities({loaded_entity_handles[0]});
+  ultra::renderer::unload_entities(loaded_entity_handles);
   ultra::renderer::unload_tilesets({victor_tileset_handle});
   ultra::quit();
   bgfx::destroy(box_vertex_buffer);

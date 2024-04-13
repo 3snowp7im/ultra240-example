@@ -23,12 +23,12 @@ namespace example {
       ultra::Entity::Attributes attributes,
       uint16_t tile_index
     ) : Entity(
-      ultra::Hash<decltype("collision"_h)>::value,
+      ultra::hash("collision"_h),
       boundaries,
       tileset,
       position,
       attributes,
-      ultra::Entity::AnimationControls(ultra::Hash<decltype("walk"_h)>::value)
+      ultra::Entity::AnimationControls(ultra::hash("walk"_h))
     ) {}
 
     void update(
@@ -67,9 +67,7 @@ namespace example {
       do {
         collision = get_boundary_collision(
           force,
-          get_collision_boxes(
-            ultra::Hash<decltype("collision"_h)>::value
-          ),
+          get_collision_boxes(ultra::hash("collision"_h)),
           boundaries
         );
         if (collision.first) {

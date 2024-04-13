@@ -1,5 +1,4 @@
 #include <array>
-#include <stdexcept>
 #include <ultra240/ultra.h>
 
 using namespace ultra::util;
@@ -24,7 +23,7 @@ namespace example::alpha {
       uint16_t tile_index,
       uint32_t state
     ) : Entity(
-      ultra::Hash<decltype("collision"_h)>::value,
+      ultra::hash("collision"_h),
       boundaries,
       tileset,
       position,

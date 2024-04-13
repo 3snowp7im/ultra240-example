@@ -11,7 +11,7 @@ namespace example {
       const ultra::geometry::Vector<float>& position,
       ultra::Entity::Attributes attributes
     ) : Entity(
-      ultra::Hash<decltype("collision"_h)>::value,
+      ultra::hash("collision"_h),
       boundaries,
       tileset,
       position,

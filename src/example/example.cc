@@ -16,27 +16,39 @@
 #endif
 
 namespace shader {
-#include "shader/vs_pass.c"
-#include "shader/fs_quad.c"
-#include "shader/vs_box.c"
-#include "shader/fs_line.c"
+#include "shader/vs.c"
+#include "shader/fs.c"
 }
 
+#define MAX_TILES     8192
+#define MAX_VERTICES  (6 * MAX_TILES)
+
+struct Vertex {
+  float a_position[4];
+  float a_texcoord0[4];
+  float a_color0[4];
+};
+
+static ultra::renderer::Transform quad_transforms[MAX_TILES];
+static ultra::renderer::Transform tex_transforms[MAX_TILES];
+
+static float quad_vertices[4][4] = {
+  {0, 0, 1, 1},
+  {0, 1, 1, 1},
+  {1, 0, 1, 1},
+  {1, 1, 1, 1},
+};
+
 static bgfx::VertexLayout vertex_layout;
-static bgfx::TextureHandle render_texture;
-static bgfx::ProgramHandle draw_quad_program;
-static bgfx::ProgramHandle draw_box_program;
-static bgfx::VertexBufferHandle quad_vertex_buffer;
-static bgfx::IndexBufferHandle quad_index_buffer;
-static bgfx::DynamicVertexBufferHandle box_vertex_buffer;
-static bgfx::UniformHandle v_ratio;
+static bgfx::TextureHandle tilesets_texture;
+static bgfx::ProgramHandle program;
 static bgfx::UniformHandle s_tex;
-static bgfx::UniformHandle v_cam;
-static bgfx::UniformHandle v_map;
 static ultra::geometry::Vector<float> camera_pos;
-static ultra::geometry::Vector<int16_t> map_pos;
-static std::array<float, 4> ratio;
 static bool render_collision_boxes = false;
+
+static int dbg_line;
+static int txt_top;
+static int txt_left;
 
 struct PlayerState {
   bool walking;
@@ -45,10 +57,6 @@ struct PlayerState {
   int jump_counter;
   ultra::geometry::LineSegment<float> floor;
 };
-
-static int dbg_line;
-static int txt_top;
-static int txt_left;
 
 #ifndef NDEBUG
 #define DEBUG(...) bgfx::dbgTextPrintf(txt_left, dbg_line++, 0x0e, __VA_ARGS__);
@@ -153,136 +161,111 @@ static ultra::geometry::Vector<float> get_camera_position(
   return camera;
 }
 
-void render(
+static void transform(
+  float result[4],
+  const ultra::renderer::Transform transform,
+  const float vertex[4]
+) {
+  auto r = glm::make_mat4(transform) * glm::make_vec4(vertex);
+  memcpy(result, glm::value_ptr(r), 4 * sizeof(float));
+}
+
+static void render(
   const ultra::World::Map& map,
   const ultra::Entity& victor,
   const ultra::geometry::Vector<float> victor_pos,
   const std::vector<ultra::Entity*>& entities,
-  const std::vector<const ultra::renderer::EntityHandle*>& entity_handles,
+  const std::vector<const ultra::renderer::SpriteHandle*>& sprite_handles,
   bool advance_time = true
 ) {
-  // Render frame.
-  ultra::renderer::clear();
-  ssize_t layer_count;
-  for (layer_count = 0;
-       layer_count < map.layers.size()
-         && map.layers[layer_count].name == ultra::hash("background"_h);
-       layer_count++);
-  ultra::renderer::render_tile_layers(0, layer_count);
-  ultra::renderer::render_entities(entity_handles, layer_count);
-  ultra::renderer::render_tile_layers(
-    layer_count,
-    map.layers.size() - layer_count
+  // Find layer to render sprites on.
+  ssize_t bg_layer_count;
+  for (bg_layer_count = 0;
+       bg_layer_count < map.layers.size()
+         && map.layers[bg_layer_count].name == ultra::hash("background"_h);
+       bg_layer_count++);
+
+  size_t count = 0;
+
+  // Render background tiles.
+  auto bg_tile_count = ultra::renderer::get_tile_transforms(
+    &quad_transforms[count],
+    &tex_transforms[count],
+    MAX_TILES - count,
+    camera_pos,
+    0,
+    bg_layer_count
   );
-  if (advance_time) {
-    ultra::renderer::advance();
+  count += bg_tile_count;
+
+  // Render sprites.
+  auto sprite_count = ultra::renderer::get_sprite_transforms(
+    &quad_transforms[count],
+    &tex_transforms[count],
+    MAX_TILES - count,
+    camera_pos,
+    sprite_handles,
+    bg_layer_count
+  );
+  count += sprite_count;
+
+  // Render foreground tiles.
+  auto fg_tile_count = ultra::renderer::get_tile_transforms(
+    &quad_transforms[count],
+    &tex_transforms[count],
+    MAX_TILES - count,
+    camera_pos,
+    bg_layer_count
+  );
+  count += fg_tile_count;
+
+  // Allocate vertices.
+  count = bgfx::getAvailTransientVertexBuffer(6 * count, vertex_layout) / 6;
+  bgfx::TransientVertexBuffer vertex_buffer;
+  bgfx::allocTransientVertexBuffer(&vertex_buffer, 6 * count, vertex_layout);
+  Vertex* vertices = reinterpret_cast<Vertex*>(vertex_buffer.data);
+
+  // Transform quad vertices.
+  for (int i = 0; i < count; i++) {
+    transform(vertices[6 * i + 0].a_position, quad_transforms[i], quad_vertices[0]);
+    transform(vertices[6 * i + 0].a_texcoord0, tex_transforms[i], quad_vertices[0]);
+    memset(vertices[6 * i + 0].a_color0, 0, 4 * sizeof(float));
+
+    transform(vertices[6 * i + 1].a_position, quad_transforms[i], quad_vertices[1]);
+    transform(vertices[6 * i + 1].a_texcoord0, tex_transforms[i], quad_vertices[1]);
+    memset(vertices[6 * i + 1].a_color0, 0, 4 * sizeof(float));
+
+    transform(vertices[6 * i + 2].a_position, quad_transforms[i], quad_vertices[2]);
+    transform(vertices[6 * i + 2].a_texcoord0, tex_transforms[i], quad_vertices[2]);
+    memset(vertices[6 * i + 2].a_color0, 0, 4 * sizeof(float));
+
+    vertices[6 * i + 3] = vertices[6 * i + 2];
+    vertices[6 * i + 4] = vertices[6 * i + 1];
+
+    transform(vertices[6 * i + 5].a_position, quad_transforms[i], quad_vertices[3]);
+    transform(vertices[6 * i + 5].a_texcoord0, tex_transforms[i], quad_vertices[3]);
+    memset(vertices[6 * i + 5].a_color0, 0, 4 * sizeof(float));
   }
 
-  // Draw texture as quad.
-  bgfx::setState(
-    BGFX_STATE_PT_TRISTRIP
-    | BGFX_STATE_WRITE_RGB
-    | BGFX_STATE_WRITE_A
-    | BGFX_STATE_WRITE_Z
-  );
-  bgfx::setIndexBuffer(quad_index_buffer);
-  bgfx::setVertexBuffer(0, quad_vertex_buffer);
-  bgfx::setUniform(v_ratio, &ratio[0]);
+  // Draw quads.
+  bgfx::setState(BGFX_STATE_DEFAULT | BGFX_STATE_BLEND_ALPHA);
+  bgfx::setVertexBuffer(0, &vertex_buffer);
   bgfx::setTexture(
     0,
     s_tex,
-    render_texture,
+    tilesets_texture,
     BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
   );
-  bgfx::submit(0, draw_quad_program);
-
-  if (render_collision_boxes) {
-    static std::vector<float> vertices;
-    vertices.clear();
-    vertices.reserve(8 * (1 + entities.size()));
-    float camera_vals[] = {camera_pos.x, camera_pos.y, 0, 0};
-    float map_vals[] = {
-      map.position.as<float>().x,
-      map.position.as<float>().y,
-      0, 0,
-    };
-    const auto& boxes = victor.get_collision_boxes(ultra::hash("collision"_h));
-    for (const auto& pair : boxes) {
-      auto box = pair.second;
-      auto pos = victor.get_collision_box_position(box);
-
-      vertices.push_back(pos.x);
-      vertices.push_back(pos.y);
-      vertices.push_back(pos.x + box.size.x);
-      vertices.push_back(pos.y);
-
-      vertices.push_back(pos.x + box.size.x);
-      vertices.push_back(pos.y);
-      vertices.push_back(pos.x + box.size.x);
-      vertices.push_back(pos.y + box.size.y);
-
-      vertices.push_back(pos.x + box.size.x);
-      vertices.push_back(pos.y + box.size.y);
-      vertices.push_back(pos.x);
-      vertices.push_back(pos.y + box.size.y);
-
-      vertices.push_back(pos.x);
-      vertices.push_back(pos.y + box.size.y);
-      vertices.push_back(pos.x);
-      vertices.push_back(pos.y);
-    }
-    for (auto& entity : entities) {
-      if (entity->has_collision_boxes(ultra::hash("collision"_h))) {
-        const auto& boxes = entity->get_collision_boxes(
-          ultra::hash("collision"_h)
-        );
-        for (const auto& pair : boxes) {
-          auto box = pair.second;
-          auto pos = entity->get_collision_box_position(box);
-
-          vertices.push_back(pos.x);
-          vertices.push_back(pos.y);
-          vertices.push_back(pos.x + box.size.x);
-          vertices.push_back(pos.y);
-
-          vertices.push_back(pos.x + box.size.x);
-          vertices.push_back(pos.y);
-          vertices.push_back(pos.x + box.size.x);
-          vertices.push_back(pos.y + box.size.y);
-
-          vertices.push_back(pos.x + box.size.x);
-          vertices.push_back(pos.y + box.size.y);
-          vertices.push_back(pos.x);
-          vertices.push_back(pos.y + box.size.y);
-
-          vertices.push_back(pos.x);
-          vertices.push_back(pos.y + box.size.y);
-          vertices.push_back(pos.x);
-          vertices.push_back(pos.y);
-        }
-      }
-    }
-    bgfx::update(
-      box_vertex_buffer,
-      0,
-      bgfx::makeRef(&vertices[0], sizeof(float) * vertices.size())
-    );
-    auto vertices_count = vertices.size() / 2;
-    bgfx::setState(
-      BGFX_STATE_PT_LINES
-      | BGFX_STATE_WRITE_RGB
-      | BGFX_STATE_WRITE_A
-      | BGFX_STATE_WRITE_Z
-    );
-    bgfx::setUniform(v_cam, camera_vals);
-    bgfx::setUniform(v_map, map_vals);
-    bgfx::setUniform(v_ratio, &ratio[0]);
-    bgfx::setVertexBuffer(0, box_vertex_buffer);
-    bgfx::submit(1, draw_box_program);
-  }
+  /// TODO use a view matrix for clip space.
+  bgfx::submit(0, program);
 
   // Draw to screen.
   bgfx::frame();
+
+  // Advance time.
+  if (advance_time) {
+    ultra::renderer::advance();
+  }
 }
 
 int main() {
@@ -352,19 +335,19 @@ int main() {
   }
 
   // Calculate draw offset.
-  float aspect = 16. / 15.;
-  struct {
-    float x, y;
-  } draw_size;
+  float ratio = 16. / 15.;
+  struct { float x, y; } draw_size, draw_offset;
   if (bounds.w > bounds.h) {
-    draw_size.x = bounds.h * aspect;
+    draw_size.x = bounds.h * ratio;
     draw_size.y = bounds.h;
   } else {
     draw_size.x = bounds.w;
-    draw_size.y = bounds.w / aspect;
+    draw_size.y = bounds.w * ratio;
   }
   txt_left = (bounds.w - draw_size.x) / 16 + 3;
   txt_top = (bounds.h - draw_size.y) / 32 + 1;
+  draw_offset.x = (bounds.w - draw_size.x) / 2.;
+  draw_offset.y = (bounds.h - draw_size.y) / 2.;
 
   // Prevent bgfx from creating a renderer thread.
   bgfx::renderFrame();
@@ -385,71 +368,34 @@ int main() {
 #endif
 
   // Create quad drawing program.
-  draw_quad_program = bgfx::createProgram(
-    bgfx::createShader(bgfx::makeRef(shader::vs_pass, sizeof(shader::vs_pass))),
-    bgfx::createShader(bgfx::makeRef(shader::fs_quad, sizeof(shader::fs_quad))),
+  program = bgfx::createProgram(
+    bgfx::createShader(bgfx::makeRef(shader::vs, sizeof(shader::vs))),
+    bgfx::createShader(bgfx::makeRef(shader::fs, sizeof(shader::fs))),
     true
   );
-  v_ratio = bgfx::createUniform("v_ratio", bgfx::UniformType::Vec4);
   s_tex = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
 
-  // Create collision box drawing program.
-  draw_box_program = bgfx::createProgram(
-    bgfx::createShader(bgfx::makeRef(shader::vs_box, sizeof(shader::vs_box))),
-    bgfx::createShader(bgfx::makeRef(shader::fs_line, sizeof(shader::fs_line))),
-    true
-  );
-  v_cam = bgfx::createUniform("v_cam", bgfx::UniformType::Vec4);
-  v_map = bgfx::createUniform("v_map", bgfx::UniformType::Vec4);
-
   // Create render texture.
-  render_texture = bgfx::createTexture2D(
-    256,
-    240,
+  tilesets_texture = bgfx::createTexture2D(
+    ultra::renderer::texture_width,
+    ultra::renderer::texture_height,
     false,
-    1,
+    ultra::renderer::texture_count,
     bgfx::TextureFormat::RGBA8
   );
   bgfx::frame();
 
-  // Define screen geometry.
-  float x = draw_size.x / bounds.w;
-  float y = draw_size.y / bounds.h;
-  float vertices[] = {
-    -x, -y,
-    x, -y,
-    -x,  y,
-    x,  y,
-  };
-  uint16_t indices[] = {0, 1, 2, 3};
-  ratio[0] = x;
-  ratio[1] = y;
-
   // Define the common vertex layout.
   vertex_layout
     .begin()
-    .add(bgfx::Attrib::Position, 2, bgfx::AttribType::Float)
+    .add(bgfx::Attrib::Position, 4, bgfx::AttribType::Float)
+    .add(bgfx::Attrib::TexCoord0, 4, bgfx::AttribType::Float)
+    .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Float)
     .end();
-
-  // Define the rendering quad vertex buffers.
-  quad_vertex_buffer = bgfx::createVertexBuffer(
-    bgfx::makeRef(vertices, sizeof(vertices)),
-    vertex_layout
-  );
-  quad_index_buffer = bgfx::createIndexBuffer(
-    bgfx::makeRef(indices, sizeof(indices))
-  );
-
-  // Define the collision box vertex buffer.
-  box_vertex_buffer = bgfx::createDynamicVertexBuffer(
-    0u,
-    vertex_layout,
-    BGFX_BUFFER_ALLOW_RESIZE
-  );
 
   // Init ULTRA240.
   ultra::init("ultra240-example");
-  bgfx::overrideInternal(render_texture, ultra::renderer::get_render_texture());
+  bgfx::overrideInternal(tilesets_texture, ultra::renderer::get_texture());
 
   // Load world.
   ultra::World alpha("alpha");
@@ -462,7 +408,7 @@ int main() {
   std::vector<const ultra::renderer::TilesetHandle*> map_tileset_handles;
   std::vector<std::shared_ptr<ultra::Entity>> map_entities;
   std::vector<ultra::Entity*> loaded_entities;
-  std::vector<const ultra::renderer::EntityHandle*> loaded_entity_handles;
+  std::vector<const ultra::renderer::SpriteHandle*> loaded_sprite_handles;
   std::vector<const ultra::Entity*> new_entities;
   std::list<Platform> platforms;
   ssize_t curr_map_index = -1;
@@ -474,7 +420,7 @@ int main() {
 
   // Allocate enough storage for entities so that reallocations are avoided.
   loaded_entities.reserve(512);
-  loaded_entity_handles.reserve(512);
+  loaded_sprite_handles.reserve(512);
   new_entities.reserve(512);
 
   // Load player tileset.
@@ -493,7 +439,7 @@ int main() {
   );
 
   // Load player entity.
-  loaded_entity_handles.push_back(
+  loaded_sprite_handles.push_back(
     ultra::renderer::load_entities(
       {victor.get()},
       {victor_tileset_handle}
@@ -501,18 +447,22 @@ int main() {
   );
 
   // Clear the view.
-  bgfx::setViewRect(0, 0, 0, bounds.w, bounds.h);
+  bgfx::setViewRect(
+    0,
+    draw_offset.x,
+    draw_offset.y,
+    draw_size.x,
+    draw_size.y
+  );
   bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
-  bgfx::setViewRect(1, 0, 0, bounds.w, bounds.h);
-  bgfx::setViewClear(1, BGFX_CLEAR_DEPTH, 0x00000000);
 
   // Declare input struct.
   struct {
-    bool up = false,
-      down = false,
-      left = false,
-      right = false,
-      jump = false;
+    bool up = false;
+    bool down = false;
+    bool left = false;
+    bool right = false;
+    bool jump = false;
   } input;
 
   // Player gravity.
@@ -563,22 +513,22 @@ int main() {
           curr_map_index = i;
           map_tileset_handles.clear();
           map_tileset_handles.push_back(
-            ultra::renderer::load_map(curr_map_index)
+            ultra::renderer::set_map(curr_map_index)
           );
           platforms.clear();
           map_entities.clear();
           map_entities.resize(map.entities.size());
-          std::vector<const ultra::renderer::EntityHandle*> map_entity_handles;
+          std::vector<const ultra::renderer::SpriteHandle*> map_sprite_handles;
           std::copy(
-            std::next(loaded_entity_handles.begin()),
-            loaded_entity_handles.end(),
-            std::back_inserter(map_entity_handles)
+            std::next(loaded_sprite_handles.begin()),
+            loaded_sprite_handles.end(),
+            std::back_inserter(map_sprite_handles)
           );
-          ultra::renderer::unload_entities(map_entity_handles);
+          ultra::renderer::unload_entities(map_sprite_handles);
           loaded_entities.clear();
-          loaded_entity_handles.erase(
-            std::next(loaded_entity_handles.begin()),
-            loaded_entity_handles.end()
+          loaded_sprite_handles.erase(
+            std::next(loaded_sprite_handles.begin()),
+            loaded_sprite_handles.end()
           );
           auto pos = victor_pos - map.position;
           if (pos.x < 16 * map.size.x / 2) {
@@ -777,7 +727,7 @@ int main() {
 
     // Load new entities.
     if (new_entities.size()) {
-      loaded_entity_handles.push_back(
+      loaded_sprite_handles.push_back(
         ultra::renderer::load_entities(new_entities, map_tileset_handles)
       );
       // Create boundaries for newly loaded platforms.
@@ -955,7 +905,7 @@ int main() {
             *victor,
             victor_pos,
             loaded_entities,
-            loaded_entity_handles,
+            loaded_sprite_handles,
             false
           );
         }
@@ -1245,28 +1195,26 @@ int main() {
 
     // Set new camera position.
     camera_pos = get_camera_position(victor_pos, map.position, map.size);
-    ultra::renderer::set_camera_position(camera_pos);
 
     // Render frame.
     print_debug_text(victor_pos, map, state);
-    render(map, *victor, victor_pos, loaded_entities, loaded_entity_handles);
+    render(
+      map,
+      *victor,
+      victor_pos,
+      loaded_entities,
+      loaded_sprite_handles
+    );
   }
 
   // Free resources.
   ultra::renderer::unload_world();
-  ultra::renderer::unload_entities(loaded_entity_handles);
+  ultra::renderer::unload_entities(loaded_sprite_handles);
   ultra::renderer::unload_tilesets({victor_tileset_handle});
   ultra::quit();
-  bgfx::destroy(box_vertex_buffer);
-  bgfx::destroy(quad_index_buffer);
-  bgfx::destroy(quad_vertex_buffer);
-  bgfx::destroy(render_texture);
-  bgfx::destroy(v_ratio);
+  bgfx::destroy(tilesets_texture);
   bgfx::destroy(s_tex);
-  bgfx::destroy(v_map);
-  bgfx::destroy(v_cam);
-  bgfx::destroy(draw_quad_program);
-  bgfx::destroy(draw_box_program);
+  bgfx::destroy(program);
   bgfx::shutdown();
   window.reset(nullptr);
   SDL_StopTextInput();

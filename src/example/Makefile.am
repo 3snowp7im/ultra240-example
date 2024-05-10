@@ -20,10 +20,8 @@ else
 endif
 
 SHADER_SRCS = \
-	shader/vs_pass.c \
-	shader/fs_quad.c \
-	shader/vs_box.c \
-	shader/fs_line.c
+	shader/vs.c \
+	shader/fs.c
 
 BUILT_SOURCES = $(SHADER_SRCS)
 

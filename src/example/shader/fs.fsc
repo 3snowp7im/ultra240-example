@@ -1,0 +1,9 @@
+$input v_uv, v_color0
+
+#include <bgfx_shader.sh>
+
+SAMPLER2DARRAY(s_tex, 0);
+
+void main() {
+  gl_FragColor = texture2DArray(s_tex, v_uv.xyz) + v_color0;
+}

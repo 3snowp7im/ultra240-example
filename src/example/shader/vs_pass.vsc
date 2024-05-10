@@ -1,9 +1,0 @@
-$input a_position
-$output v_uv
-
-uniform vec4 v_ratio;
-
-void main() {
-  gl_Position = vec4(a_position, 0, 1);
-  v_uv = (a_position + v_ratio.xy) / (2 * v_ratio.xy);
-}

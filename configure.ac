@@ -1,5 +1,4 @@
 AC_INIT([ultra240-example], [0.0.1])
-PKG_CHECK_MODULES([GLM], [glm])
 PKG_CHECK_MODULES([SDL2], [sdl2])
 PKG_CHECK_MODULES([WAYLAND], [wayland-egl])
 PKG_CHECK_MODULES([ULTRA], [ultra240])

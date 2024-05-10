@@ -22,7 +22,8 @@ endif
 SHADER_SRCS = \
 	shader/vs.c \
 	shader/tile.c \
-	shader/rt.c
+	shader/rt.c \
+	shader/box.c
 
 BUILT_SOURCES = $(SHADER_SRCS)
 
@@ -31,7 +32,6 @@ CLEANFILES = $(SHADER_SRCS)
 bin_PROGRAMS = example
 example_SOURCES = example.cc
 example_CXXFLAGS = \
-	$(GLM_CFLAGS) \
 	$(ULTRA_CFLAGS) \
 	$(SDL2_CFLAGS) \
 	$(WAYLAND_CFLAGS) \
@@ -41,7 +41,6 @@ example_CXXFLAGS = \
 	$(DEBUG_FLAGS)
 
 example_LDADD = \
-	$(GLM_LIBS) \
 	$(ULTRA_LIBS) \
 	$(SDL2_LIBS) \
 	$(WAYLAND_LIBS)

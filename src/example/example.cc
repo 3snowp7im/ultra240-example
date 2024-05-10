@@ -1,7 +1,6 @@
 #include <bgfx/bgfx.h>
 #include <bgfx/platform.h>
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/gtx/matrix_transform_2d.hpp>
+#include <bx/math.h>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -19,6 +18,7 @@ namespace shader {
 #include "shader/vs.c"
 #include "shader/tile.c"
 #include "shader/rt.c"
+#include "shader/box.c"
 }
 
 #define MAX_TILES     8192
@@ -40,6 +40,8 @@ static float quad_vertices[4][4] = {
   {1, 1, 1, 1},
 };
 
+static float proj[16];
+
 static bgfx::VertexLayout vertex_layout;
 static bgfx::TextureHandle tilesets_texture;
 static bgfx::TextureHandle frame_buffer_textures[2];
@@ -47,6 +49,7 @@ static bgfx::FrameBufferHandle frame_buffer;
 static bgfx::VertexBufferHandle rendered_vertex_buffer;
 static bgfx::ProgramHandle tile_program;
 static bgfx::ProgramHandle rt_program;
+static bgfx::ProgramHandle box_program;
 static bgfx::UniformHandle s_tex;
 static ultra::geometry::Vector<float> camera_pos;
 static bool render_collision_boxes = false;
@@ -166,15 +169,6 @@ static ultra::geometry::Vector<float> get_camera_position(
   return camera;
 }
 
-static void transform(
-  float result[4],
-  const ultra::renderer::Transform transform,
-  const float vertex[4]
-) {
-  auto r = glm::make_mat4(transform) * glm::make_vec4(vertex);
-  memcpy(result, glm::value_ptr(r), 4 * sizeof(float));
-}
-
 static void render(
   const ultra::World::Map& map,
   const ultra::Entity& victor,
@@ -232,54 +226,54 @@ static void render(
 
   // Transform quad vertices.
   for (int i = 0; i < count; i++) {
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 0].a_position,
-      quad_transforms[i],
-      quad_vertices[0]
+      quad_vertices[0],
+      quad_transforms[i]
     );
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 0].a_texcoord0,
-      tex_transforms[i],
-      quad_vertices[0]
+      quad_vertices[0],
+      tex_transforms[i]
     );
     memset(vertices[6 * i + 0].a_color0, 0, 4 * sizeof(float));
 
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 1].a_position,
-      quad_transforms[i],
-      quad_vertices[1]
+      quad_vertices[1],
+      quad_transforms[i]
     );
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 1].a_texcoord0,
-      tex_transforms[i],
-      quad_vertices[1]
+      quad_vertices[1],
+      tex_transforms[i]
     );
     memset(vertices[6 * i + 1].a_color0, 0, 4 * sizeof(float));
 
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 2].a_position,
-      quad_transforms[i],
-      quad_vertices[2]
+      quad_vertices[2],
+      quad_transforms[i]
     );
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 2].a_texcoord0,
-      tex_transforms[i],
-      quad_vertices[2]
+      quad_vertices[2],
+      tex_transforms[i]
     );
     memset(vertices[6 * i + 2].a_color0, 0, 4 * sizeof(float));
 
     vertices[6 * i + 3] = vertices[6 * i + 2];
     vertices[6 * i + 4] = vertices[6 * i + 1];
 
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 5].a_position,
-      quad_transforms[i],
-      quad_vertices[3]
+      quad_vertices[3],
+      quad_transforms[i]
     );
-    transform(
+    bx::vec4MulMtx(
       vertices[6 * i + 5].a_texcoord0,
-      tex_transforms[i],
-      quad_vertices[3]
+      quad_vertices[3],
+      tex_transforms[i]
     );
     memset(vertices[6 * i + 5].a_color0, 0, 4 * sizeof(float));
   }
@@ -294,7 +288,7 @@ static void render(
     BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
   );
   bgfx::setViewFrameBuffer(0, frame_buffer);
-  /// TODO use a view matrix for clip space.
+  bgfx::setViewTransform(0, nullptr, proj);
   bgfx::submit(0, tile_program);
 
   // Draw rendered texture to screen.
@@ -307,6 +301,92 @@ static void render(
     BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
   );
   bgfx::submit(1, rt_program);
+
+  // Draw collision boxes
+  if (render_collision_boxes) {
+    // Create the view and projection transform.
+    float view[16];
+    bx::mtxTranslate(
+      view,
+      -camera_pos.x - map.position.as<float>().x,
+      -camera_pos.y - map.position.as<float>().y,
+      0
+    );
+    const ultra::Entity* all[1 + entities.size()];
+    all[0] = &victor;
+    memcpy(&all[1], &entities[0], entities.size() * sizeof(ultra::Entity*));
+    // Count all boxes.
+    count = 0;
+    for (auto entity : all) {
+      if (entity->has_collision_boxes(ultra::hash("collision"_h))) {
+        const auto& boxes = entity->get_collision_boxes(
+          ultra::hash("collision"_h)
+        );
+        count += boxes.size();
+      }
+    }
+    // Allocate vertex buffer.
+    count = bgfx::getAvailTransientVertexBuffer(8 * count, vertex_layout) / 8;
+    bgfx::TransientVertexBuffer vertex_buffer;
+    bgfx::allocTransientVertexBuffer(&vertex_buffer, 8 * count, vertex_layout);
+    // Create geometry.
+    Vertex* vertices = reinterpret_cast<Vertex*>(vertex_buffer.data);
+    size_t i = 0;
+    for (auto entity : all) {
+      if (entity->has_collision_boxes(ultra::hash("collision"_h))) {
+        const auto& boxes = entity->get_collision_boxes(
+          ultra::hash("collision"_h)
+        );
+        for (const auto& pair : boxes) {
+          if (i >= count) {
+            break;
+          }
+          auto box = pair.second;
+          auto pos = entity->get_collision_box_position(box);
+
+          float tl[] = {pos.x, pos.y, 0, 1};
+          float tr[] = {pos.x + box.size.x, pos.y, 0, 1};
+          float br[] = {pos.x + box.size.x, pos.y + box.size.y, 0, 1};
+          float bl[] = {pos.x, pos.y + box.size.y, 0, 1};
+          float red[] = {1, 0, 0, 1};
+
+          memcpy(vertices[8 * i + 0].a_position, tl, sizeof(tl));
+          memset(vertices[8 * i + 0].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 0].a_color0, red, sizeof(red));
+          memcpy(vertices[8 * i + 1].a_position, tr, sizeof(tr));
+          memset(vertices[8 * i + 1].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 1].a_color0, red, sizeof(red));
+
+          memcpy(vertices[8 * i + 2].a_position, tr, sizeof(tr));
+          memset(vertices[8 * i + 2].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 2].a_color0, red, sizeof(red));
+          memcpy(vertices[8 * i + 3].a_position, br, sizeof(br));
+          memset(vertices[8 * i + 3].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 3].a_color0, red, sizeof(red));
+
+          memcpy(vertices[8 * i + 4].a_position, br, sizeof(br));
+          memset(vertices[8 * i + 4].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 4].a_color0, red, sizeof(red));
+          memcpy(vertices[8 * i + 5].a_position, bl, sizeof(bl));
+          memset(vertices[8 * i + 5].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 5].a_color0, red, sizeof(red));
+
+          memcpy(vertices[8 * i + 6].a_position, bl, sizeof(bl));
+          memset(vertices[8 * i + 6].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 6].a_color0, red, sizeof(red));
+          memcpy(vertices[8 * i + 7].a_position, tl, sizeof(tl));
+          memset(vertices[8 * i + 7].a_texcoord0, 0, 16 * sizeof(float));
+          memcpy(vertices[8 * i + 7].a_color0, red, sizeof(red));
+
+          i++;
+        }
+      }
+    }
+    bgfx::setState(BGFX_STATE_DEFAULT | BGFX_STATE_PT_LINES);
+    bgfx::setVertexBuffer(0, &vertex_buffer);
+    bgfx::setViewTransform(2, view, proj);
+    bgfx::submit(2, box_program);
+  }
 
   // Render.
   bgfx::frame();
@@ -384,8 +464,8 @@ int main() {
   }
 
   // Calculate draw offset.
-  float ratio = 16. / 15.;
   struct { float x, y; } draw_size, draw_offset;
+  float ratio = 16. / 15.;
   if (bounds.w > bounds.h) {
     draw_size.x = bounds.h * ratio;
     draw_size.y = bounds.h;
@@ -420,6 +500,7 @@ int main() {
   auto vs_shader = bgfx::createShader(bgfx::makeRef(shader::vs, sizeof(shader::vs)));
   auto tile_shader = bgfx::createShader(bgfx::makeRef(shader::tile, sizeof(shader::tile)));
   auto rt_shader = bgfx::createShader(bgfx::makeRef(shader::rt, sizeof(shader::rt)));
+  auto box_shader = bgfx::createShader(bgfx::makeRef(shader::box, sizeof(shader::box)));
 
   // Create tile drawing program.
   tile_program = bgfx::createProgram(
@@ -433,10 +514,17 @@ int main() {
     rt_shader
   );
 
+  // Create collision box drawing program.
+  box_program = bgfx::createProgram(
+    vs_shader,
+    box_shader
+  );
+
   // Free shaders.
   bgfx::destroy(vs_shader);
   bgfx::destroy(tile_shader);
   bgfx::destroy(rt_shader);
+  bgfx::destroy(box_shader);
 
   // Create texture uniform.
   s_tex = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
@@ -484,6 +572,9 @@ int main() {
     .add(bgfx::Attrib::TexCoord0, 4, bgfx::AttribType::Float)
     .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Float)
     .end();
+
+  // Get the screen space transform matrix.
+  ultra::renderer::get_projection_transform(proj);
 
   // Create vertices for drawing render texture.
   Vertex rendered_vertices[] = {{
@@ -582,6 +673,14 @@ int main() {
     draw_size.y
   );
   bgfx::setViewClear(1, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
+  bgfx::setViewRect(
+    2,
+    draw_offset.x,
+    draw_offset.y,
+    draw_size.x,
+    draw_size.y
+  );
+  bgfx::setViewClear(2, BGFX_CLEAR_DEPTH, 0x00000000);
 
   // Declare input struct.
   struct {
@@ -1307,14 +1406,6 @@ int main() {
       );
     }
 
-    // Apply rendering transformations.
-    auto transform = glm::mat3(1.f);
-    memcpy(
-      &victor->transform[0],
-      glm::value_ptr(transform),
-      sizeof(victor->transform)
-    );
-
     // Get new player position.
     victor_pos = victor->position
       + victor->tileset.tile_size.as_x().as<int>() / 2
@@ -1345,6 +1436,7 @@ int main() {
   bgfx::destroy(s_tex);
   bgfx::destroy(tile_program);
   bgfx::destroy(rt_program);
+  bgfx::destroy(box_program);
   bgfx::shutdown();
   window.reset(nullptr);
   SDL_StopTextInput();

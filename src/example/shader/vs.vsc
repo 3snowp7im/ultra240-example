@@ -2,8 +2,10 @@ $input a_position, a_texcoord0, a_color0
 
 $output v_uv, v_color0
 
+#include <bgfx_shader.sh>
+
 void main() {
-  gl_Position = a_position;
+  gl_Position = u_modelViewProj * a_position;
   v_uv = a_texcoord0;
   v_color0 = a_color0;
 }

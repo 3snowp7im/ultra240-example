@@ -17,7 +17,8 @@
 
 namespace shader {
 #include "shader/vs.c"
-#include "shader/fs.c"
+#include "shader/tile.c"
+#include "shader/rt.c"
 }
 
 #define MAX_TILES     8192
@@ -41,7 +42,11 @@ static float quad_vertices[4][4] = {
 
 static bgfx::VertexLayout vertex_layout;
 static bgfx::TextureHandle tilesets_texture;
-static bgfx::ProgramHandle program;
+static bgfx::TextureHandle frame_buffer_textures[2];
+static bgfx::FrameBufferHandle frame_buffer;
+static bgfx::VertexBufferHandle rendered_vertex_buffer;
+static bgfx::ProgramHandle tile_program;
+static bgfx::ProgramHandle rt_program;
 static bgfx::UniformHandle s_tex;
 static ultra::geometry::Vector<float> camera_pos;
 static bool render_collision_boxes = false;
@@ -227,23 +232,55 @@ static void render(
 
   // Transform quad vertices.
   for (int i = 0; i < count; i++) {
-    transform(vertices[6 * i + 0].a_position, quad_transforms[i], quad_vertices[0]);
-    transform(vertices[6 * i + 0].a_texcoord0, tex_transforms[i], quad_vertices[0]);
+    transform(
+      vertices[6 * i + 0].a_position,
+      quad_transforms[i],
+      quad_vertices[0]
+    );
+    transform(
+      vertices[6 * i + 0].a_texcoord0,
+      tex_transforms[i],
+      quad_vertices[0]
+    );
     memset(vertices[6 * i + 0].a_color0, 0, 4 * sizeof(float));
 
-    transform(vertices[6 * i + 1].a_position, quad_transforms[i], quad_vertices[1]);
-    transform(vertices[6 * i + 1].a_texcoord0, tex_transforms[i], quad_vertices[1]);
+    transform(
+      vertices[6 * i + 1].a_position,
+      quad_transforms[i],
+      quad_vertices[1]
+    );
+    transform(
+      vertices[6 * i + 1].a_texcoord0,
+      tex_transforms[i],
+      quad_vertices[1]
+    );
     memset(vertices[6 * i + 1].a_color0, 0, 4 * sizeof(float));
 
-    transform(vertices[6 * i + 2].a_position, quad_transforms[i], quad_vertices[2]);
-    transform(vertices[6 * i + 2].a_texcoord0, tex_transforms[i], quad_vertices[2]);
+    transform(
+      vertices[6 * i + 2].a_position,
+      quad_transforms[i],
+      quad_vertices[2]
+    );
+    transform(
+      vertices[6 * i + 2].a_texcoord0,
+      tex_transforms[i],
+      quad_vertices[2]
+    );
     memset(vertices[6 * i + 2].a_color0, 0, 4 * sizeof(float));
 
     vertices[6 * i + 3] = vertices[6 * i + 2];
     vertices[6 * i + 4] = vertices[6 * i + 1];
 
-    transform(vertices[6 * i + 5].a_position, quad_transforms[i], quad_vertices[3]);
-    transform(vertices[6 * i + 5].a_texcoord0, tex_transforms[i], quad_vertices[3]);
+    transform(
+      vertices[6 * i + 5].a_position,
+      quad_transforms[i],
+      quad_vertices[3]
+    );
+    transform(
+      vertices[6 * i + 5].a_texcoord0,
+      tex_transforms[i],
+      quad_vertices[3]
+    );
     memset(vertices[6 * i + 5].a_color0, 0, 4 * sizeof(float));
   }
 
@@ -256,10 +293,22 @@ static void render(
     tilesets_texture,
     BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
   );
+  bgfx::setViewFrameBuffer(0, frame_buffer);
   /// TODO use a view matrix for clip space.
-  bgfx::submit(0, program);
+  bgfx::submit(0, tile_program);
 
-  // Draw to screen.
+  // Draw rendered texture to screen.
+  bgfx::setState(BGFX_STATE_WRITE_RGB);
+  bgfx::setVertexBuffer(0, rendered_vertex_buffer);
+  bgfx::setTexture(
+    0,
+    s_tex,
+    bgfx::getTexture(frame_buffer, 0),
+    BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
+  );
+  bgfx::submit(1, rt_program);
+
+  // Render.
   bgfx::frame();
 
   // Advance time.
@@ -367,15 +416,32 @@ int main() {
   bgfx::setDebug(BGFX_DEBUG_TEXT);
 #endif
 
-  // Create quad drawing program.
-  program = bgfx::createProgram(
-    bgfx::createShader(bgfx::makeRef(shader::vs, sizeof(shader::vs))),
-    bgfx::createShader(bgfx::makeRef(shader::fs, sizeof(shader::fs))),
-    true
+  // Create shaders.
+  auto vs_shader = bgfx::createShader(bgfx::makeRef(shader::vs, sizeof(shader::vs)));
+  auto tile_shader = bgfx::createShader(bgfx::makeRef(shader::tile, sizeof(shader::tile)));
+  auto rt_shader = bgfx::createShader(bgfx::makeRef(shader::rt, sizeof(shader::rt)));
+
+  // Create tile drawing program.
+  tile_program = bgfx::createProgram(
+    vs_shader,
+    tile_shader
   );
+
+  // Create render target drawing program.
+  rt_program = bgfx::createProgram(
+    vs_shader,
+    rt_shader
+  );
+
+  // Free shaders.
+  bgfx::destroy(vs_shader);
+  bgfx::destroy(tile_shader);
+  bgfx::destroy(rt_shader);
+
+  // Create texture uniform.
   s_tex = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
 
-  // Create render texture.
+  // Create tileset texture.
   tilesets_texture = bgfx::createTexture2D(
     ultra::renderer::texture_width,
     ultra::renderer::texture_height,
@@ -383,7 +449,33 @@ int main() {
     ultra::renderer::texture_count,
     bgfx::TextureFormat::RGBA8
   );
-  bgfx::frame();
+
+  // Create frame buffer color attachment.
+  frame_buffer_textures[0] = bgfx::createTexture2D(
+    256,
+    240,
+    false,
+    1,
+    bgfx::TextureFormat::RGBA8,
+    BGFX_TEXTURE_RT
+  );
+
+  // Create frame buffer depth attachment.
+  frame_buffer_textures[1] = bgfx::createTexture2D(
+    256,
+    240,
+    false,
+    1,
+    bgfx::TextureFormat::D16,
+    BGFX_TEXTURE_RT
+  );
+
+  // Create frame buffer.
+  frame_buffer = bgfx::createFrameBuffer(
+    2,
+    frame_buffer_textures,
+    true
+  );
 
   // Define the common vertex layout.
   vertex_layout
@@ -392,6 +484,39 @@ int main() {
     .add(bgfx::Attrib::TexCoord0, 4, bgfx::AttribType::Float)
     .add(bgfx::Attrib::Color0, 4, bgfx::AttribType::Float)
     .end();
+
+  // Create vertices for drawing render texture.
+  Vertex rendered_vertices[] = {{
+    .a_position = {-1, +1, 0, 1},
+    .a_texcoord0 = {0, 1, 0, 1},
+    .a_color0 = {0},
+  }, {
+    .a_position = {-1, -1, 0, 1},
+    .a_texcoord0 = {0, 0, 0, 1},
+    .a_color0 = {0},
+  }, {
+    .a_position = {+1, +1, 0, 1},
+    .a_texcoord0 = {1, 1, 0, 1},
+    .a_color0 = {0},
+  }, {
+    .a_position = {+1, +1, 0, 1},
+    .a_texcoord0 = {1, 1, 0, 1},
+    .a_color0 = {0},
+  }, {
+    .a_position = {-1, -1, 0, 1},
+    .a_texcoord0 = {0, 0, 0, 1},
+    .a_color0 = {0},
+  }, {
+    .a_position = {+1, -1, 0, 1},
+    .a_texcoord0 = {1, 0, 0, 1},
+    .a_color0 = {0},
+  }};
+  rendered_vertex_buffer = bgfx::createVertexBuffer(
+    bgfx::makeRef(rendered_vertices, sizeof(rendered_vertices)),
+    vertex_layout
+  );
+
+  bgfx::frame();
 
   // Init ULTRA240.
   ultra::init("ultra240-example");
@@ -447,14 +572,16 @@ int main() {
   );
 
   // Clear the view.
+  bgfx::setViewRect(0, 0, 0, 256, 240);
+  bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
   bgfx::setViewRect(
-    0,
+    1,
     draw_offset.x,
     draw_offset.y,
     draw_size.x,
     draw_size.y
   );
-  bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
+  bgfx::setViewClear(1, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
 
   // Declare input struct.
   struct {
@@ -1212,9 +1339,12 @@ int main() {
   ultra::renderer::unload_entities(loaded_sprite_handles);
   ultra::renderer::unload_tilesets({victor_tileset_handle});
   ultra::quit();
+  bgfx::destroy(rendered_vertex_buffer);
+  bgfx::destroy(frame_buffer);
   bgfx::destroy(tilesets_texture);
   bgfx::destroy(s_tex);
-  bgfx::destroy(program);
+  bgfx::destroy(tile_program);
+  bgfx::destroy(rt_program);
   bgfx::shutdown();
   window.reset(nullptr);
   SDL_StopTextInput();

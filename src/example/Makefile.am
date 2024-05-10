@@ -21,7 +21,8 @@ endif
 
 SHADER_SRCS = \
 	shader/vs.c \
-	shader/fs.c
+	shader/tile.c \
+	shader/rt.c
 
 BUILT_SOURCES = $(SHADER_SRCS)
 

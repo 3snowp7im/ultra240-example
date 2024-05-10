@@ -969,6 +969,7 @@ int main() {
     // Poll for events.
     bool quit = false;
     bool advance = false;
+    bool printed_debug_text = false;
     do {
       SDL_Event sdl_event;
       while (SDL_PollEvent(&sdl_event)) {
@@ -1117,6 +1118,7 @@ int main() {
         dbg_line = txt_top;
         if (!advance) {
           print_debug_text(victor_pos, map, state);
+          printed_debug_text = true;
           render(
             map,
             *victor,
@@ -1406,7 +1408,9 @@ int main() {
     camera_pos = get_camera_position(victor_pos, map.position, map.size);
 
     // Render frame.
-    print_debug_text(victor_pos, map, state);
+    if (!printed_debug_text) {
+      print_debug_text(victor_pos, map, state);
+    }
     render(
       map,
       *victor,

@@ -30,7 +30,9 @@ struct Vertex {
   float a_color0[4];
 };
 
-static ultra::renderer::Transform quad_transforms[MAX_TILES];
+static struct { float x, y; } draw_size, draw_offset;
+
+static ultra::renderer::Transform vertex_transforms[MAX_TILES];
 static ultra::renderer::Transform tex_transforms[MAX_TILES];
 
 static float quad_vertices[4][4] = {
@@ -177,119 +179,115 @@ static void render(
   const std::vector<const ultra::renderer::SpriteHandle*>& sprite_handles,
   bool advance_time = true
 ) {
-  // Find layer to render sprites on.
-  ssize_t bg_layer_count;
-  for (bg_layer_count = 0;
-       bg_layer_count < map.layers.size()
-         && map.layers[bg_layer_count].name == ultra::hash("background"_h);
-       bg_layer_count++);
+  size_t id = 0;
+  size_t sprite_layer_index;
+  for (size_t layer_index = 0; layer_index < map.layers.size(); layer_index++) {
 
-  size_t count = 0;
+    // Get view transform.
+    float view[16];
+    ultra::renderer::get_view_transform(view, camera_pos, layer_index);
 
-  // Render background tiles.
-  auto bg_tile_count = ultra::renderer::get_tile_transforms(
-    &quad_transforms[count],
-    &tex_transforms[count],
-    MAX_TILES - count,
-    camera_pos,
-    0,
-    bg_layer_count
-  );
-  count += bg_tile_count;
+    size_t count = 0;
 
-  // Render sprites.
-  auto sprite_count = ultra::renderer::get_sprite_transforms(
-    &quad_transforms[count],
-    &tex_transforms[count],
-    MAX_TILES - count,
-    camera_pos,
-    sprite_handles,
-    bg_layer_count
-  );
-  count += sprite_count;
-
-  // Render foreground tiles.
-  auto fg_tile_count = ultra::renderer::get_tile_transforms(
-    &quad_transforms[count],
-    &tex_transforms[count],
-    MAX_TILES - count,
-    camera_pos,
-    bg_layer_count
-  );
-  count += fg_tile_count;
-
-  // Allocate vertices.
-  count = bgfx::getAvailTransientVertexBuffer(6 * count, vertex_layout) / 6;
-  bgfx::TransientVertexBuffer vertex_buffer;
-  bgfx::allocTransientVertexBuffer(&vertex_buffer, 6 * count, vertex_layout);
-  Vertex* vertices = reinterpret_cast<Vertex*>(vertex_buffer.data);
-
-  // Transform quad vertices.
-  for (int i = 0; i < count; i++) {
-    bx::vec4MulMtx(
-      vertices[6 * i + 0].a_position,
-      quad_vertices[0],
-      quad_transforms[i]
+    // Render tiles.
+    auto tile_count = ultra::renderer::get_map_transforms(
+      &vertex_transforms[count],
+      &tex_transforms[count],
+      MAX_TILES - count,
+      layer_index
     );
-    bx::vec4MulMtx(
-      vertices[6 * i + 0].a_texcoord0,
-      quad_vertices[0],
-      tex_transforms[i]
-    );
-    memset(vertices[6 * i + 0].a_color0, 0, 4 * sizeof(float));
+    count += tile_count;
 
-    bx::vec4MulMtx(
-      vertices[6 * i + 1].a_position,
-      quad_vertices[1],
-      quad_transforms[i]
-    );
-    bx::vec4MulMtx(
-      vertices[6 * i + 1].a_texcoord0,
-      quad_vertices[1],
-      tex_transforms[i]
-    );
-    memset(vertices[6 * i + 1].a_color0, 0, 4 * sizeof(float));
+    if (layer_index == map.layers.size() - 1
+        || map.layers[layer_index + 1].name != ultra::hash("background"_h)) {
+      // Render sprites.
+      auto sprite_count = ultra::renderer::get_sprite_transforms(
+        &vertex_transforms[count],
+        &tex_transforms[count],
+        MAX_TILES - count,
+        sprite_handles,
+        layer_index
+      );
+      count += sprite_count;
+      sprite_layer_index = layer_index;
+    }
 
-    bx::vec4MulMtx(
-      vertices[6 * i + 2].a_position,
-      quad_vertices[2],
-      quad_transforms[i]
-    );
-    bx::vec4MulMtx(
-      vertices[6 * i + 2].a_texcoord0,
-      quad_vertices[2],
-      tex_transforms[i]
-    );
-    memset(vertices[6 * i + 2].a_color0, 0, 4 * sizeof(float));
+    // Allocate vertices.
+    count = bgfx::getAvailTransientVertexBuffer(6 * count, vertex_layout) / 6;
+    bgfx::TransientVertexBuffer vertex_buffer;
+    bgfx::allocTransientVertexBuffer(&vertex_buffer, 6 * count, vertex_layout);
+    Vertex* vertices = reinterpret_cast<Vertex*>(vertex_buffer.data);
 
-    vertices[6 * i + 3] = vertices[6 * i + 2];
-    vertices[6 * i + 4] = vertices[6 * i + 1];
+    // Transform vertices.
+    for (int i = 0; i < count; i++) {
+      bx::vec4MulMtx(
+        vertices[6 * i + 0].a_position,
+        quad_vertices[0],
+        vertex_transforms[i]
+      );
+      bx::vec4MulMtx(
+        vertices[6 * i + 0].a_texcoord0,
+        quad_vertices[0],
+        tex_transforms[i]
+      );
+      memset(vertices[6 * i + 0].a_color0, 0, 4 * sizeof(float));
 
-    bx::vec4MulMtx(
-      vertices[6 * i + 5].a_position,
-      quad_vertices[3],
-      quad_transforms[i]
+      bx::vec4MulMtx(
+        vertices[6 * i + 1].a_position,
+        quad_vertices[1],
+        vertex_transforms[i]
+      );
+      bx::vec4MulMtx(
+        vertices[6 * i + 1].a_texcoord0,
+        quad_vertices[1],
+        tex_transforms[i]
+      );
+      memset(vertices[6 * i + 1].a_color0, 0, 4 * sizeof(float));
+
+      bx::vec4MulMtx(
+        vertices[6 * i + 2].a_position,
+        quad_vertices[2],
+        vertex_transforms[i]
+      );
+      bx::vec4MulMtx(
+        vertices[6 * i + 2].a_texcoord0,
+        quad_vertices[2],
+        tex_transforms[i]
+      );
+      memset(vertices[6 * i + 2].a_color0, 0, 4 * sizeof(float));
+
+      vertices[6 * i + 3] = vertices[6 * i + 2];
+      vertices[6 * i + 4] = vertices[6 * i + 1];
+
+      bx::vec4MulMtx(
+        vertices[6 * i + 5].a_position,
+        quad_vertices[3],
+        vertex_transforms[i]
+      );
+      bx::vec4MulMtx(
+        vertices[6 * i + 5].a_texcoord0,
+        quad_vertices[3],
+        tex_transforms[i]
+      );
+      memset(vertices[6 * i + 5].a_color0, 0, 4 * sizeof(float));
+    }
+
+    // Draw quads.
+    bgfx::setState(BGFX_STATE_DEFAULT | BGFX_STATE_BLEND_ALPHA);
+    bgfx::setVertexBuffer(0, &vertex_buffer);
+    bgfx::setTexture(
+      0,
+      s_tex,
+      tilesets_texture,
+      BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
     );
-    bx::vec4MulMtx(
-      vertices[6 * i + 5].a_texcoord0,
-      quad_vertices[3],
-      tex_transforms[i]
-    );
-    memset(vertices[6 * i + 5].a_color0, 0, 4 * sizeof(float));
+    bgfx::setViewFrameBuffer(id, frame_buffer);
+    bgfx::setViewTransform(id, view, proj);
+    bgfx::setViewRect(id, 0, 0, 256, 240);
+    bgfx::setViewClear(id, BGFX_CLEAR_DEPTH, 0x00000000);
+    bgfx::submit(id, tile_program);
+    id++;
   }
-
-  // Draw quads.
-  bgfx::setState(BGFX_STATE_DEFAULT | BGFX_STATE_BLEND_ALPHA);
-  bgfx::setVertexBuffer(0, &vertex_buffer);
-  bgfx::setTexture(
-    0,
-    s_tex,
-    tilesets_texture,
-    BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
-  );
-  bgfx::setViewFrameBuffer(0, frame_buffer);
-  bgfx::setViewTransform(0, nullptr, proj);
-  bgfx::submit(0, tile_program);
 
   // Draw rendered texture to screen.
   bgfx::setState(BGFX_STATE_WRITE_RGB);
@@ -300,23 +298,28 @@ static void render(
     bgfx::getTexture(frame_buffer, 0),
     BGFX_SAMPLER_MIN_POINT | BGFX_SAMPLER_MAG_POINT
   );
-  bgfx::submit(1, rt_program);
+  bgfx::setViewRect(
+    id,
+    draw_offset.x,
+    draw_offset.y,
+    draw_size.x,
+    draw_size.y
+  );
+  bgfx::setViewClear(id, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
+  bgfx::submit(id, rt_program);
+  id++;
 
   // Draw collision boxes
   if (render_collision_boxes) {
-    // Create the view and projection transform.
+    // Get view transform.
     float view[16];
-    bx::mtxTranslate(
-      view,
-      -camera_pos.x - map.position.as<float>().x,
-      -camera_pos.y - map.position.as<float>().y,
-      0
-    );
+    ultra::renderer::get_view_transform(view, camera_pos, sprite_layer_index);
+    // Collect all entities.
     const ultra::Entity* all[1 + entities.size()];
     all[0] = &victor;
     memcpy(&all[1], &entities[0], entities.size() * sizeof(ultra::Entity*));
     // Count all boxes.
-    count = 0;
+    size_t count = 0;
     for (auto entity : all) {
       if (entity->has_collision_boxes(ultra::hash("collision"_h))) {
         const auto& boxes = entity->get_collision_boxes(
@@ -384,8 +387,17 @@ static void render(
     }
     bgfx::setState(BGFX_STATE_DEFAULT | BGFX_STATE_PT_LINES);
     bgfx::setVertexBuffer(0, &vertex_buffer);
-    bgfx::setViewTransform(2, view, proj);
-    bgfx::submit(2, box_program);
+    bgfx::setViewTransform(id, view, proj);
+    bgfx::setViewRect(
+      id,
+      draw_offset.x,
+      draw_offset.y,
+      draw_size.x,
+      draw_size.y
+    );
+    bgfx::setViewClear(id, BGFX_CLEAR_DEPTH, 0x00000000);
+    bgfx::submit(id, box_program);
+    id++;
   }
 
   // Render.
@@ -464,7 +476,6 @@ int main() {
   }
 
   // Calculate draw offset.
-  struct { float x, y; } draw_size, draw_offset;
   float ratio = 16. / 15.;
   if (bounds.w > bounds.h) {
     draw_size.x = bounds.h * ratio;
@@ -661,26 +672,6 @@ int main() {
       {victor_tileset_handle}
     )
   );
-
-  // Clear the view.
-  bgfx::setViewRect(0, 0, 0, 256, 240);
-  bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
-  bgfx::setViewRect(
-    1,
-    draw_offset.x,
-    draw_offset.y,
-    draw_size.x,
-    draw_size.y
-  );
-  bgfx::setViewClear(1, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x000000ff);
-  bgfx::setViewRect(
-    2,
-    draw_offset.x,
-    draw_offset.y,
-    draw_size.x,
-    draw_size.y
-  );
-  bgfx::setViewClear(2, BGFX_CLEAR_DEPTH, 0x00000000);
 
   // Declare input struct.
   struct {

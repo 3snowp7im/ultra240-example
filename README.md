@@ -27,7 +27,7 @@ You will need to install SDL2 and Wayland development libraries. To install
 these dependencies on Ubuntu:
 
 ```shell
-$ sudo apt-get install libglm-dev libsdl2-dev libwayland-dev
+$ sudo apt-get install libsdl2-dev libwayland-dev
 ```
 
 This example uses [BGFX](https://github.com/bkaradzic/bgfx) for establishing

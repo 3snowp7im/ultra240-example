@@ -3,6 +3,6 @@ tileset_DATA = victor.bin
 
 CLEANFILES = $(tileset_DATA)
 
-SUFFIXES = .tsx .bin
+SUFFIXES = .bin
 .tsx.bin:
 	ultra-sdk-tileset $^ $@

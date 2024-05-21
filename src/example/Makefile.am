@@ -30,20 +30,21 @@ BUILT_SOURCES = $(SHADER_SRCS)
 CLEANFILES = $(SHADER_SRCS)
 
 bin_PROGRAMS = example
-example_SOURCES = example.cc
+example_SOURCES = \
+	example.cc
 example_CXXFLAGS = \
 	$(ULTRA_CFLAGS) \
 	$(SDL2_CFLAGS) \
 	$(WAYLAND_CFLAGS) \
-	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/src/bgfx/include \
 	-I$(top_srcdir)/src/bx/include \
+	-I$(top_srcdir)/src \
 	$(DEBUG_FLAGS)
-
 example_LDADD = \
 	$(ULTRA_LIBS) \
 	$(SDL2_LIBS) \
-	$(WAYLAND_LIBS)
+	$(WAYLAND_LIBS) \
+	entity/libentity.la
 example_LDFLAGS = -L$(BGFX_BIN_DIR) -l$(BGFX_LIB)
 example_DEPENDENCIES = \
 	$(BGFX_BIN_DIR)/lib$(BGFX_LIB).so \

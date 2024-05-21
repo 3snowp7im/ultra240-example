@@ -9,6 +9,7 @@
 #include <thread>
 #include <ultra240/ultra.h>
 #include <wayland-egl.h>
+#include "example/example.h"
 
 #ifndef NDEBUG
 #include <bx/debug.h>
@@ -117,9 +118,9 @@ enum ButtonIndex {
 };
 
 struct Platform {
-  const ultra::Entity* entity;
+  const example::SingleSpriteEntity* entity;
   ultra::geometry::Vector<float> position;
-  ultra::Tileset::Tile::CollisionBox collision_box;
+  ultra::Tileset::Tile::CollisionBox<uint16_t> collision_box;
   ultra::World::Boundaries::const_iterator boundary;
 };
 
@@ -134,15 +135,18 @@ static void reset_boundaries(
     std::back_inserter(boundaries)
   );
   for (auto& platform : platforms) {
-    auto pos = platform.entity->get_collision_box_position(
-      platform.collision_box
+    auto box = platform.entity->sprite.tileset.adjust_collision_box(
+      platform.collision_box,
+      platform.entity->get_position(),
+      platform.entity->get_attributes()
     );
+    platform.position = platform.entity->get_position();
     platform.boundary = boundaries.insert(
       boundaries.end(),
       ultra::World::Boundary(
         ultra::World::Boundary::Flags::OneWay,
-        pos,
-        pos + platform.collision_box.size.as_x()
+        box.position,
+        box.position + box.size.as_x()
       )
     );
   }
@@ -173,11 +177,9 @@ static ultra::geometry::Vector<float> get_camera_position(
 
 static void render(
   const ultra::World::Map& map,
-  const ultra::Entity& victor,
-  const ultra::geometry::Vector<float> victor_pos,
-  const std::vector<ultra::Entity*>& entities,
-  const std::vector<const ultra::renderer::SpriteHandle*>& sprite_handles,
-  bool advance_time = true
+  example::SingleSpriteEntity** entities,
+  size_t entities_count,
+  bool advance_time
 ) {
   size_t id = 0;
   size_t sprite_layer_index;
@@ -200,15 +202,21 @@ static void render(
 
     if (layer_index == map.layers.size() - 1
         || map.layers[layer_index + 1].name != ultra::hash("background"_h)) {
+      // Get sprite handles.
+      const ultra::renderer::SpriteHandle* sprites[entities_count];
+      for (size_t i = 0; i < entities_count; i++) {
+        sprites[i] = entities[i]->get_sprites();
+      }
       // Render sprites.
       auto sprite_count = ultra::renderer::get_sprite_transforms(
         &vertex_transforms[count],
         &tex_transforms[count],
         MAX_TILES - count,
-        sprite_handles,
+        sprites,
+        entities_count,
         layer_index
       );
-      count += sprite_count;
+      count += entities_count;
       sprite_layer_index = layer_index;
     }
 
@@ -219,7 +227,7 @@ static void render(
     Vertex* vertices = reinterpret_cast<Vertex*>(vertex_buffer.data);
 
     // Transform vertices.
-    for (int i = 0; i < count; i++) {
+    for (size_t i = 0; i < count; i++) {
       bx::vec4MulMtx(
         vertices[6 * i + 0].a_position,
         quad_vertices[0],
@@ -314,19 +322,12 @@ static void render(
     // Get view transform.
     float view[16];
     ultra::renderer::get_view_transform(view, camera_pos, sprite_layer_index);
-    // Collect all entities.
-    const ultra::Entity* all[1 + entities.size()];
-    all[0] = &victor;
-    memcpy(&all[1], &entities[0], entities.size() * sizeof(ultra::Entity*));
     // Count all boxes.
     size_t count = 0;
-    for (auto entity : all) {
-      if (entity->has_collision_boxes(ultra::hash("collision"_h))) {
-        const auto& boxes = entity->get_collision_boxes(
-          ultra::hash("collision"_h)
-        );
-        count += boxes.size();
-      }
+    for (size_t i = 0; i < entities_count; i++) {
+      count += entities[i]->get_collision_boxes_count(
+        ultra::hash("collision"_h)
+      );
     }
     // Allocate vertex buffer.
     count = bgfx::getAvailTransientVertexBuffer(8 * count, vertex_layout) / 8;
@@ -334,55 +335,63 @@ static void render(
     bgfx::allocTransientVertexBuffer(&vertex_buffer, 8 * count, vertex_layout);
     // Create geometry.
     Vertex* vertices = reinterpret_cast<Vertex*>(vertex_buffer.data);
-    size_t i = 0;
-    for (auto entity : all) {
-      if (entity->has_collision_boxes(ultra::hash("collision"_h))) {
-        const auto& boxes = entity->get_collision_boxes(
-          ultra::hash("collision"_h)
-        );
-        for (const auto& pair : boxes) {
-          if (i >= count) {
-            break;
-          }
-          auto box = pair.second;
-          auto pos = entity->get_collision_box_position(box);
-
-          float tl[] = {pos.x, pos.y, 0, 1};
-          float tr[] = {pos.x + box.size.x, pos.y, 0, 1};
-          float br[] = {pos.x + box.size.x, pos.y + box.size.y, 0, 1};
-          float bl[] = {pos.x, pos.y + box.size.y, 0, 1};
-          float red[] = {1, 0, 0, 1};
-
-          memcpy(vertices[8 * i + 0].a_position, tl, sizeof(tl));
-          memset(vertices[8 * i + 0].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 0].a_color0, red, sizeof(red));
-          memcpy(vertices[8 * i + 1].a_position, tr, sizeof(tr));
-          memset(vertices[8 * i + 1].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 1].a_color0, red, sizeof(red));
-
-          memcpy(vertices[8 * i + 2].a_position, tr, sizeof(tr));
-          memset(vertices[8 * i + 2].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 2].a_color0, red, sizeof(red));
-          memcpy(vertices[8 * i + 3].a_position, br, sizeof(br));
-          memset(vertices[8 * i + 3].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 3].a_color0, red, sizeof(red));
-
-          memcpy(vertices[8 * i + 4].a_position, br, sizeof(br));
-          memset(vertices[8 * i + 4].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 4].a_color0, red, sizeof(red));
-          memcpy(vertices[8 * i + 5].a_position, bl, sizeof(bl));
-          memset(vertices[8 * i + 5].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 5].a_color0, red, sizeof(red));
-
-          memcpy(vertices[8 * i + 6].a_position, bl, sizeof(bl));
-          memset(vertices[8 * i + 6].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 6].a_color0, red, sizeof(red));
-          memcpy(vertices[8 * i + 7].a_position, tl, sizeof(tl));
-          memset(vertices[8 * i + 7].a_texcoord0, 0, 16 * sizeof(float));
-          memcpy(vertices[8 * i + 7].a_color0, red, sizeof(red));
-
-          i++;
+    size_t vertices_count = 0;
+    for (size_t i = 0; i < entities_count; i++) {
+      size_t boxes_count = entities[i]->get_collision_boxes_count(
+        ultra::hash("collision"_h)
+      );
+      ultra::Tileset::Tile::CollisionBox<float> boxes[boxes_count];
+      entities[i]->get_collision_boxes(boxes, ultra::hash("collision"_h));
+      for (size_t j = 0; j < boxes_count; j++) {
+        if (vertices_count >= 8 * count) {
+          break;
         }
+        auto box = boxes[j];
+        auto pos = box.position;
+
+        float tl[] = {pos.x, pos.y, 0, 1};
+        float tr[] = {pos.x + box.size.x, pos.y, 0, 1};
+        float br[] = {pos.x + box.size.x, pos.y + box.size.y, 0, 1};
+        float bl[] = {pos.x, pos.y + box.size.y, 0, 1};
+        float red[] = {1, 0, 0, 1};
+
+        memcpy(vertices->a_position, tl, sizeof(tl));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+        memcpy(vertices->a_position, tr, sizeof(tr));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+
+        memcpy(vertices->a_position, tr, sizeof(tr));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+        memcpy(vertices->a_position, br, sizeof(br));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+
+        memcpy(vertices->a_position, br, sizeof(br));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+        memcpy(vertices->a_position, bl, sizeof(bl));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+
+        memcpy(vertices->a_position, bl, sizeof(bl));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+        memcpy(vertices->a_position, tl, sizeof(tl));
+        memset(vertices->a_texcoord0, 0, 16 * sizeof(float));
+        memcpy(vertices->a_color0, red, sizeof(red));
+        vertices++;
+
+        vertices_count += 8;
       }
     }
     bgfx::setState(BGFX_STATE_DEFAULT | BGFX_STATE_PT_LINES);
@@ -508,10 +517,18 @@ int main() {
 #endif
 
   // Create shaders.
-  auto vs_shader = bgfx::createShader(bgfx::makeRef(shader::vs, sizeof(shader::vs)));
-  auto tile_shader = bgfx::createShader(bgfx::makeRef(shader::tile, sizeof(shader::tile)));
-  auto rt_shader = bgfx::createShader(bgfx::makeRef(shader::rt, sizeof(shader::rt)));
-  auto box_shader = bgfx::createShader(bgfx::makeRef(shader::box, sizeof(shader::box)));
+  auto vs_shader = bgfx::createShader(
+    bgfx::makeRef(shader::vs, sizeof(shader::vs))
+  );
+  auto tile_shader = bgfx::createShader(
+    bgfx::makeRef(shader::tile, sizeof(shader::tile))
+  );
+  auto rt_shader = bgfx::createShader(
+    bgfx::makeRef(shader::rt, sizeof(shader::rt))
+  );
+  auto box_shader = bgfx::createShader(
+    bgfx::makeRef(shader::box, sizeof(shader::box))
+  );
 
   // Create tile drawing program.
   tile_program = bgfx::createProgram(
@@ -632,11 +649,10 @@ int main() {
   );
 
   // Declare stuff needed for loaded map entities.
-  std::vector<const ultra::renderer::TilesetHandle*> map_tileset_handles;
-  std::vector<std::shared_ptr<ultra::Entity>> map_entities;
-  std::vector<ultra::Entity*> loaded_entities;
-  std::vector<const ultra::renderer::SpriteHandle*> loaded_sprite_handles;
-  std::vector<const ultra::Entity*> new_entities;
+  const ultra::renderer::TilesetHandle* map_tileset_handle;
+  std::vector<std::shared_ptr<example::SingleSpriteEntity>> map_entities;
+  std::vector<example::SingleSpriteEntity*> loaded_entities;
+  std::vector<const example::SingleSpriteEntity*> new_entities;
   std::list<Platform> platforms;
   ssize_t curr_map_index = -1;
   struct {
@@ -647,31 +663,26 @@ int main() {
 
   // Allocate enough storage for entities so that reallocations are avoided.
   loaded_entities.reserve(512);
-  loaded_sprite_handles.reserve(512);
   new_entities.reserve(512);
 
   // Load player tileset.
   ultra::Tileset victor_tileset("victor");
   auto victor_tileset_handle = ultra::renderer::load_tilesets(
-    {&victor_tileset}
+    &victor_tileset,
+    1
   );
 
   // Create player entity.
-  std::shared_ptr<ultra::Entity> victor(
-    ultra::Entity::from_tileset(
-      alpha.get_boundaries(),
+  std::shared_ptr<example::SingleSpriteEntity> victor(
+    ultra::Entity::Factory<example::SingleSpriteEntity>::from_tileset(
       victor_tileset,
-      {32, 512}
+      victor_tileset_handle,
+      {32, 512},
+      {},
+      alpha.get_boundaries()
     )
   );
-
-  // Load player entity.
-  loaded_sprite_handles.push_back(
-    ultra::renderer::load_entities(
-      {victor.get()},
-      {victor_tileset_handle}
-    )
-  );
+  loaded_entities.push_back(victor.get());
 
   // Declare input struct.
   struct {
@@ -706,7 +717,7 @@ int main() {
 
   // Collision detection.
   float ground_cross = std::numeric_limits<float>::infinity();
-  std::pair<bool, ultra::Entity::BoundaryCollision> collision;
+  std::pair<bool, ultra::World::BoundaryCollision> collision;
 
   // Event loop.
   bool frame_advancing = false;
@@ -717,10 +728,10 @@ int main() {
     dbg_line = txt_top;
 
     // Determine map based on player's world position.
-    auto victor_pos = victor->position
-      + victor->tileset.tile_size.as_x().as<int>() / 2
-      - victor->tileset.tile_size.as_y().as<int>() / 2;
-    for (int i = 0; i < alpha.maps.size(); i++) {
+    auto victor_pos = victor->get_position()
+      + victor->sprite.tileset.tile_size.as_x().as<int>() / 2
+      - victor->sprite.tileset.tile_size.as_y().as<int>() / 2;
+    for (size_t i = 0; i < alpha.maps.size(); i++) {
       auto& map = alpha.maps[i];
       if (victor_pos.x >= 16 * map.position.x
           && victor_pos.y >= 16 * map.position.y
@@ -728,25 +739,17 @@ int main() {
           && victor_pos.y < 16 * (map.position.y + map.size.y)) {
         if (curr_map_index != i) {
           curr_map_index = i;
-          map_tileset_handles.clear();
-          map_tileset_handles.push_back(
-            ultra::renderer::set_map(curr_map_index)
-          );
+          map_tileset_handle = ultra::renderer::set_map(curr_map_index);
           platforms.clear();
+          const ultra::renderer::SpriteHandle* handles[map_entities.size()];
+          for (size_t j = 0; j < map_entities.size(); j++) {
+            handles[j] = map_entities[j]->get_sprites();
+          }
+          ultra::renderer::unload_sprites(handles, map_entities.size());
           map_entities.clear();
           map_entities.resize(map.entities.size());
-          std::vector<const ultra::renderer::SpriteHandle*> map_sprite_handles;
-          std::copy(
-            std::next(loaded_sprite_handles.begin()),
-            loaded_sprite_handles.end(),
-            std::back_inserter(map_sprite_handles)
-          );
-          ultra::renderer::unload_entities(map_sprite_handles);
           loaded_entities.clear();
-          loaded_sprite_handles.erase(
-            std::next(loaded_sprite_handles.begin()),
-            loaded_sprite_handles.end()
-          );
+          loaded_entities.push_back(victor.get());
           auto pos = victor_pos - map.position;
           if (pos.x < 16 * map.size.x / 2) {
             entity_window.x.min = 0;
@@ -779,14 +782,14 @@ int main() {
     new_entities.clear();
 
     // Check for entities entering the window from the left.
-    for (int i = entity_window.x.min; i >= 0; i--) {
+    for (ssize_t i = entity_window.x.min; i >= 0; i--) {
       if (i == map.entities.size()) {
         continue;
       }
       auto index = map.sorted_entities.x.max[i];
       auto& entity = map.entities[index];
-      auto right = entity.position.x + entity.tileset->tile_size.x;
-      auto top = entity.position.y - entity.tileset->tile_size.y;
+      auto right = entity.position.x + entity.tileset.tile_size.x;
+      auto top = entity.position.y - entity.tileset.tile_size.y;
       auto bottom = entity.position.y;
       if (right >= camera_pos.x) {
         if (i > 0) {
@@ -795,10 +798,13 @@ int main() {
         if (bottom >= camera_pos.y
             && top <= camera_pos.y + 240
             && map_entities[index] == nullptr) {
-          map_entities[index].reset(ultra::Entity::from_map(
-            alpha.get_boundaries(),
-            entity
-          ));
+          map_entities[index].reset(
+            ultra::Entity::Factory<example::SingleSpriteEntity>::from_map(
+              entity,
+              map_tileset_handle,
+              alpha.get_boundaries()
+            )
+          );
           auto entity = map_entities[index].get();
           loaded_entities.push_back(entity);
           new_entities.push_back(entity);
@@ -809,9 +815,9 @@ int main() {
     }
 
     // Check for entities leaving the window from the left.
-    for (int i = entity_window.x.min; i < map.entities.size(); i++) {
+    for (size_t i = entity_window.x.min; i < map.entities.size(); i++) {
       auto& entity = map.entities[map.sorted_entities.x.max[i]];
-      auto right = entity.position.x + entity.tileset->tile_size.x;
+      auto right = entity.position.x + entity.tileset.tile_size.x;
       if (right < camera_pos.x) {
         entity_window.x.min++;
       } else {
@@ -820,10 +826,10 @@ int main() {
     }
 
     // Check for entities entering the window from the right.
-    for (int i = entity_window.x.max; i < map.entities.size(); i++) {
+    for (size_t i = entity_window.x.max; i < map.entities.size(); i++) {
       auto index = map.sorted_entities.x.min[i];
       auto& entity = map.entities[index];
-      auto top = entity.position.y - entity.tileset->tile_size.y;;
+      auto top = entity.position.y - entity.tileset.tile_size.y;
       auto bottom = entity.position.y;
       auto left = entity.position.x;
       if (left <= camera_pos.x + 256) {
@@ -831,10 +837,13 @@ int main() {
         if (bottom >= camera_pos.y
             && top <= camera_pos.y + 240
             && map_entities[index] == nullptr) {
-          map_entities[index].reset(ultra::Entity::from_map(
-            alpha.get_boundaries(),
-            entity
-          ));
+          map_entities[index].reset(
+            ultra::Entity::Factory<example::SingleSpriteEntity>::from_map(
+              entity,
+              map_tileset_handle,
+              alpha.get_boundaries()
+            )
+          );
           auto entity = map_entities[index].get();
           loaded_entities.push_back(entity);
           new_entities.push_back(entity);
@@ -845,7 +854,7 @@ int main() {
     }
 
     // Check for entities leaving the window from the right.
-    for (int i = entity_window.x.max; i >= 0; i--) {
+    for (ssize_t i = entity_window.x.max; i >= 0; i--) {
       if (i == map.entities.size()) {
         continue;
       }
@@ -861,21 +870,24 @@ int main() {
     }
 
     // Check for entities entering the window from the bottom.
-    for (int i = entity_window.y.max; i < map.entities.size(); i++) {
+    for (size_t i = entity_window.y.max; i < map.entities.size(); i++) {
       auto index = map.sorted_entities.y.min[i];
       auto& entity = map.entities[index];
-      auto top = entity.position.y - entity.tileset->tile_size.y;
-      auto right = entity.position.x + entity.tileset->tile_size.x;
+      auto top = entity.position.y - entity.tileset.tile_size.y;
+      auto right = entity.position.x + entity.tileset.tile_size.x;
       auto left = entity.position.x;
       if (top <= camera_pos.y + 240) {
         entity_window.y.max++;
         if (right >= camera_pos.x
             && left <= camera_pos.x + 256
             && map_entities[index] == nullptr) {
-          map_entities[index].reset(ultra::Entity::from_map(
-            alpha.get_boundaries(),
-            entity
-          ));
+          map_entities[index].reset(
+            ultra::Entity::Factory<example::SingleSpriteEntity>::from_map(
+              entity,
+              map_tileset_handle,
+              alpha.get_boundaries()
+            )
+          );
           auto entity = map_entities[index].get();
           loaded_entities.push_back(entity);
           new_entities.push_back(entity);
@@ -886,12 +898,12 @@ int main() {
     }
 
     // Check for entities leaving the window from the bottom.
-    for (int i = entity_window.y.max; i >= 0; i--) {
+    for (ssize_t i = entity_window.y.max; i >= 0; i--) {
       if (i == map.entities.size()) {
         continue;
       }
       auto& entity = map.entities[map.sorted_entities.y.min[i]];
-      auto top = entity.position.y - entity.tileset->tile_size.y;
+      auto top = entity.position.y - entity.tileset.tile_size.y;
       if (top > camera_pos.y + 240) {
         if (i > 0) {
           entity_window.y.max--;
@@ -902,14 +914,14 @@ int main() {
     }
 
     // Check for entities entering the window from the top.
-    for (int i = entity_window.y.min; i >= 0; i--) {
+    for (ssize_t i = entity_window.y.min; i >= 0; i--) {
       if (i == map.entities.size()) {
         continue;
       }
       auto index = map.sorted_entities.y.max[i];
       auto& entity = map.entities[index];
       auto bottom = entity.position.y;
-      auto right = entity.position.x + entity.tileset->tile_size.x;
+      auto right = entity.position.x + entity.tileset.tile_size.x;
       auto left = entity.position.x;
       if (bottom >= camera_pos.y) {
         if (i > 0) {
@@ -918,10 +930,13 @@ int main() {
         if (right >= camera_pos.x
             && left <= camera_pos.x + 256
             && map_entities[index] == nullptr) {
-          map_entities[index].reset(ultra::Entity::from_map(
-            alpha.get_boundaries(),
-            entity
-          ));
+          map_entities[index].reset(
+            ultra::Entity::Factory<example::SingleSpriteEntity>::from_map(
+              entity,
+              map_tileset_handle,
+              alpha.get_boundaries()
+            )
+          );
           auto entity = map_entities[index].get();
           loaded_entities.push_back(entity);
           new_entities.push_back(entity);
@@ -932,7 +947,7 @@ int main() {
     }
 
     // Check for entities leaving the window from the top.
-    for (int i = entity_window.y.min; i < map.entities.size(); i++) {
+    for (size_t i = entity_window.y.min; i < map.entities.size(); i++) {
       auto& entity = map.entities[map.sorted_entities.y.max[i]];
       auto bottom = entity.position.y;
       if (bottom < camera_pos.y) {
@@ -944,23 +959,24 @@ int main() {
 
     // Load new entities.
     if (new_entities.size()) {
-      loaded_sprite_handles.push_back(
-        ultra::renderer::load_entities(new_entities, map_tileset_handles)
-      );
       // Create boundaries for newly loaded platforms.
-      for (const auto& entity : new_entities) {
-        if (entity->has_collision_boxes(ultra::hash("boundary"_h))) {
-          for (const auto& pair : entity->get_collision_boxes(
-                 ultra::hash("boundary"_h)
-               )) {
-            if (pair.first == ultra::hash("platform"_h)) {
-              platforms.push_back({
-                entity,
-                entity->position,
-                pair.second,
-                boundaries.cend(),
-              });
-            }
+      for (const auto entity : new_entities) {
+        size_t count = entity->get_collision_boxes_count(
+          ultra::hash("boundary"_h)
+        );
+        ultra::Tileset::Tile::CollisionBox<uint16_t> boxes[count];
+        entity->get_collision_boxes<uint16_t>(
+          boxes,
+          ultra::hash("boundary"_h)
+        );
+        for (size_t i = 0; i < count; i++) {
+          if (boxes[i].name == ultra::hash("platform"_h)) {
+            platforms.push_back({
+              entity,
+              entity->get_position(),
+              boxes[i],
+              boundaries.cend(),
+            });
           }
         }
       }
@@ -1121,10 +1137,8 @@ int main() {
           printed_debug_text = true;
           render(
             map,
-            *victor,
-            victor_pos,
-            loaded_entities,
-            loaded_sprite_handles,
+            &loaded_entities[0],
+            loaded_entities.size(),
             false
           );
         }
@@ -1135,7 +1149,7 @@ int main() {
       break;
     }
 
-    // Update map entities.
+    // Update entities.
     for (auto entity : loaded_entities) {
       boundaries.clear();
       std::copy(
@@ -1143,14 +1157,35 @@ int main() {
         alpha.get_boundaries().cend(),
         std::back_inserter(boundaries)
       );
-      entity->update(boundaries, victor.get(), loaded_entities);
+      entity->update({
+        .boundaries = boundaries,
+        .entities = &loaded_entities[0],
+        .entities_count = loaded_entities.size(),
+      });
+    }
+
+    // Apply platform forces.
+    for (auto& platform : platforms) {
+      auto dst = platform.entity->get_position() - platform.position;
+      auto box = platform.entity->sprite.tileset.adjust_collision_box(
+        platform.collision_box,
+        platform.position,
+        platform.entity->get_attributes()
+      );
+      ultra::geometry::LineSegment<float> boundary(
+        box.position,
+        box.position + platform.collision_box.size.as_x()
+      );
+      if (state.grounded && state.floor == boundary) {
+        victor->set_position(victor->get_position() + dst);
+      }
+      platform.position = platform.entity->get_position();
     }
 
     // Collect map and entity boundaries.
     reset_boundaries(boundaries, alpha, platforms);
     
     // Update animations.
-    victor->update_animation(ultra::hash("collision"_h), boundaries);
     for (auto entity : loaded_entities) {
       entity->update_animation(
         ultra::hash("collision"_h),
@@ -1208,23 +1243,6 @@ int main() {
       force.y = terminal_velocity;
     }
 
-    // Apply platform forces.
-    for (auto& platform : platforms) {
-      auto dst = platform.entity->position - platform.position;
-      auto pos = platform.entity->get_collision_box_position(
-        platform.position,
-        platform.collision_box
-      );
-      ultra::geometry::LineSegment<float> boundary(
-        pos,
-        pos + platform.collision_box.size.as_x()
-      );
-      if (state.grounded && state.floor == boundary) {
-        victor->position += dst;
-      }
-      platform.position = platform.entity->position;
-    }
-
     // Apply forces.
     state.grounded = false;
     ground_cross = std::numeric_limits<float>::infinity();
@@ -1234,11 +1252,10 @@ int main() {
       std::abs(force.y),
     };
     ultra::geometry::Vector<float> applied_force;
-
     do {
       collision = victor->get_boundary_collision(
         force,
-        victor->get_collision_boxes(ultra::hash("collision"_h)),
+        ultra::hash("collision"_h),
         boundaries
       );
       if (collision.first) {
@@ -1246,7 +1263,7 @@ int main() {
         // Get cross product of boundary and force.
         auto cross = boundary.to_vector().unit().cross(force.unit());
         // Detect ground boundary.
-        if (collision.second.edge == ultra::Entity::Collision::Edge::Bottom
+        if (collision.second.edge == ultra::World::Collision::Edge::Bottom
             && state.jump_counter != 1) {
           // Skip one-way boundaries on an upward vector.
           bool skip = false;
@@ -1282,7 +1299,7 @@ int main() {
         if (std::abs(applied_force.y) + std::abs(dst.y) > abs_force.y) {
           dst.y = original_force.y - applied_force.y;
         }
-        victor->position += dst;
+        victor->set_position(victor->get_position() + dst);
         applied_force += dst;
         // If player is standing still on ground, zero out the force vector.
         if (state.grounded && !state.walking && state.jump_counter != 1) {
@@ -1347,7 +1364,7 @@ int main() {
         if (std::abs(applied_force.y) + std::abs(force.y) > abs_force.y) {
           dst.y = original_force.y - applied_force.y;
         }
-        victor->position += dst;
+        victor->set_position(victor->get_position() + dst);
         applied_force += dst;
       }
     } while (boundaries.size() && collision.first);
@@ -1361,9 +1378,9 @@ int main() {
 
     // Set animation.
     if (input.left && !input.right) {
-      victor->attributes.flip_x = true;
+      victor->sprite.attributes.flip_x = true;
     } else if (!input.left && input.right) {
-      victor->attributes.flip_x = false;
+      victor->sprite.attributes.flip_x = false;
     }
     if (state.grounded) {
       if (input.left ^ input.right) {
@@ -1393,16 +1410,16 @@ int main() {
       victor->animate(
         ultra::hash("collision"_h),
         boundaries,
-        ultra::Entity::AnimationControls::Builder()
+        ultra::AnimatedSprite::AnimationControls::Builder()
         .name(ultra::hash("jump fall"_h))
         .build()
       );
     }
 
     // Get new player position.
-    victor_pos = victor->position
-      + victor->tileset.tile_size.as_x().as<int>() / 2
-      - victor->tileset.tile_size.as_y().as<int>() / 2;
+    victor_pos = victor->get_position()
+      + victor->sprite.tileset.tile_size.as_x().as<int>() / 2
+      - victor->sprite.tileset.tile_size.as_y().as<int>() / 2;
 
     // Set new camera position.
     camera_pos = get_camera_position(victor_pos, map.position, map.size);
@@ -1413,17 +1430,20 @@ int main() {
     }
     render(
       map,
-      *victor,
-      victor_pos,
-      loaded_entities,
-      loaded_sprite_handles
+      &loaded_entities[0],
+      loaded_entities.size(),
+      true
     );
   }
 
   // Free resources.
+  const ultra::renderer::SpriteHandle* handles[loaded_entities.size()];
+  for (size_t j = 0; j < loaded_entities.size(); j++) {
+    handles[j] = loaded_entities[j]->get_sprites();
+  }
+  ultra::renderer::unload_sprites(handles, loaded_entities.size());
   ultra::renderer::unload_world();
-  ultra::renderer::unload_entities(loaded_sprite_handles);
-  ultra::renderer::unload_tilesets({victor_tileset_handle});
+  ultra::renderer::unload_tilesets(&victor_tileset_handle, 1);
   ultra::quit();
   bgfx::destroy(rendered_vertex_buffer);
   bgfx::destroy(frame_buffer);

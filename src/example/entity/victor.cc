@@ -1,32 +1,34 @@
-#include <ultra240/ultra.h>
+#include "example/example.h"
 
 namespace example {
 
-  class Victor : public ultra::Entity {
+  class Victor : public SingleSpriteEntity {
   public:
 
     Victor(
-      const ultra::World::Boundaries& boundaries,
       const ultra::Tileset& tileset,
+      const ultra::renderer::TilesetHandle* handle,
       const ultra::geometry::Vector<float>& position,
-      ultra::Entity::Attributes attributes
-    ) : Entity(
-      ultra::hash("collision"_h),
-      boundaries,
-      tileset,
-      position,
-      attributes
-    ) {}
+      ultra::Tileset::Attributes attributes
+    ) : SingleSpriteEntity(
+          tileset,
+          handle,
+          position,
+          attributes,
+          0
+        ) {}
+
+    void update(SingleSpriteEntity::UpdateContext context) {}
 
   };
 
 }
 
-extern "C" ultra::Entity* create_entity(
-  const ultra::World::Boundaries& boundaries,
+extern "C" example::SingleSpriteEntity* create_entity(
   const ultra::Tileset& tileset,
+  const ultra::renderer::TilesetHandle* handle,
   const ultra::geometry::Vector<float>& position,
-  ultra::Entity::Attributes attributes
+  ultra::Tileset::Attributes attributes
 ) {
-  return new example::Victor(boundaries, tileset, position, attributes);
+  return new example::Victor(tileset, handle, position, attributes);
 }

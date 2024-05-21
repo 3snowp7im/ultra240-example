@@ -3,12 +3,12 @@
         "height": 4300,
         "width": 2
     },
-    "activeFile": "world/alpha/alpha.tmx",
+    "activeFile": "tileset/victor.tsx",
     "expandedProjectPaths": [
-        "world/alpha",
         ".",
-        "world",
-        "tileset"
+        "tileset",
+        "world/alpha",
+        "world"
     ],
     "fileStates": {
         "tileset/alpha.tsx": {
@@ -28,14 +28,11 @@
             "scaleInEditor": 5.5
         },
         "world/alpha/alpha.tmx": {
-            "expandedObjectLayers": [
-                5
-            ],
             "scale": 4,
             "selectedLayer": 4,
             "viewCenter": {
-                "x": 134.625,
-                "y": 309.5
+                "x": 255.875,
+                "y": 271.875
             }
         },
         "world/alpha/alpha.tsx": {
@@ -46,15 +43,15 @@
             "scale": 5.5,
             "selectedLayer": 2,
             "viewCenter": {
-                "x": 255.90909090909093,
-                "y": 120.09090909090911
+                "x": 255.9090909090909,
+                "y": 119.90909090909092
             }
         },
         "world/alpha/zeta.tmx": {
             "scale": 3,
             "selectedLayer": 2,
             "viewCenter": {
-                "x": 128.16666666666666,
+                "x": 127.83333333333331,
                 "y": 1023.8333333333333
             }
         }
@@ -84,13 +81,13 @@
     "project": "example.tiled-project",
     "property.type": "string",
     "recentFiles": [
+        "world/alpha/alpha.tmx",
+        "world/alpha/beta.tmx",
+        "world/alpha/zeta.tmx",
         "tileset/bounds.tsx",
         "tileset/alpha.tsx",
         "tileset/skeleton.tsx",
         "tileset/victor.tsx",
-        "world/alpha/zeta.tmx",
-        "world/alpha/beta.tmx",
-        "world/alpha/alpha.tmx",
         "world/alpha/alpha.tsx"
     ],
     "tileset.lastUsedFormat": "tsx",

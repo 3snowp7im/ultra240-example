@@ -562,7 +562,7 @@ int main() {
     ultra::renderer::texture_width,
     ultra::renderer::texture_height,
     false,
-    ultra::renderer::texture_count,
+    ultra::renderer::texture_layers,
     bgfx::TextureFormat::RGBA8
   );
 

@@ -12,10 +12,10 @@ namespace example {
       ultra::Tileset::Attributes attributes
     ) : SingleSpriteEntity(
           tileset,
+          0,
           handle,
           position,
-          attributes,
-          0
+          attributes
         ) {}
 
     void update(SingleSpriteEntity::UpdateContext context) {}

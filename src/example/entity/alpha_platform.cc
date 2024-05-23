@@ -16,10 +16,10 @@ namespace example::alpha {
 
     Platform(
       const ultra::Tileset& tileset,
+      uint16_t tile_index,
       const ultra::renderer::TilesetHandle* handle,
       const ultra::geometry::Vector<float>& position,
-      ultra::Tileset::Attributes attributes,
-      uint16_t tile_index,
+      const ultra::Tileset::Attributes& attributes,
       uint32_t state
     ) : start_pos(position),
         speed({
@@ -37,10 +37,10 @@ namespace example::alpha {
         }}),
         SingleSpriteEntity(
           tileset,
+          tile_index,
           handle,
           position,
-          attributes,
-          tile_index
+          attributes
         ) {}
 
     void update(UpdateContext context) {
@@ -82,10 +82,10 @@ extern "C" example::SingleSpriteEntity* create_entity(
 ) {
   return new example::alpha::Platform(
     tileset,
+    tile_index,
     handle,
     position,
     attributes,
-    tile_index,
     state
   );
 }

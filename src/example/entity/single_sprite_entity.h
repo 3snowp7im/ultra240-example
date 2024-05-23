@@ -18,10 +18,19 @@ namespace example {
 
     SingleSpriteEntity(
       const ultra::Tileset& tileset,
+      ultra::Hash animation_name,
+      const ultra::AnimatedSprite::AnimationControls& animation_controls,
       const ultra::renderer::TilesetHandle* handle,
       const ultra::geometry::Vector<float>& position,
-      ultra::Tileset::Attributes attributes,
-      uint16_t tile_index
+      const ultra::Tileset::Attributes& attributes
+    );
+
+    SingleSpriteEntity(
+      const ultra::Tileset& tileset,
+      uint16_t tile_index,
+      const ultra::renderer::TilesetHandle* handle,
+      const ultra::geometry::Vector<float>& position,
+      const ultra::Tileset::Attributes& attributes
     );
 
     virtual ~SingleSpriteEntity();
@@ -47,9 +56,10 @@ namespace example {
     ) const;
 
     bool animate(
+      ultra::Hash aniation_name,
+      const ultra::AnimatedSprite::AnimationControls& animation_controls,
       ultra::Hash collision_box_type,
       const ultra::World::Boundaries& boundaries,
-      ultra::AnimatedSprite::AnimationControls animation_controls,
       bool force_restart = false
     );
 

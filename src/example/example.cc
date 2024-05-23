@@ -1385,15 +1385,17 @@ int main() {
     if (state.grounded) {
       if (input.left ^ input.right) {
         victor->animate(
+          ultra::hash("walk"_h),
+          ultra::AnimatedSprite::AnimationControls(),
           ultra::hash("collision"_h),
-          boundaries,
-          {ultra::hash("walk"_h)}
+          boundaries
         );
       } else {
         victor->animate(
+          ultra::hash("rest"_h),
+          ultra::AnimatedSprite::AnimationControls(),
           ultra::hash("collision"_h),
-          boundaries,
-          {ultra::hash("rest"_h)}
+          boundaries
         );
       }
     } else if (input.jump
@@ -1401,18 +1403,18 @@ int main() {
                && force.y < 0) {
       if (state.jump_counter) {
         victor->animate(
+          ultra::hash("jump rise"_h),
+          ultra::AnimatedSprite::AnimationControls(),
           ultra::hash("collision"_h),
-          boundaries,
-          {ultra::hash("jump rise"_h)}
+          boundaries
         );
       }
     } else {
       victor->animate(
+        ultra::hash("jump fall"_h),
+        ultra::AnimatedSprite::AnimationControls::Builder().build(),
         ultra::hash("collision"_h),
-        boundaries,
-        ultra::AnimatedSprite::AnimationControls::Builder()
-        .name(ultra::hash("jump fall"_h))
-        .build()
+        boundaries
       );
     }
 

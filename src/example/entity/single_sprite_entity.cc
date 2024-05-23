@@ -4,15 +4,32 @@ namespace example {
 
   SingleSpriteEntity::SingleSpriteEntity(
     const ultra::Tileset& tileset,
+    ultra::Hash animation_name,
+    const ultra::AnimatedSprite::AnimationControls& animation_controls,
     const ultra::renderer::TilesetHandle* handle,
     const ultra::geometry::Vector<float>& position,
-    ultra::Tileset::Attributes attributes,
-    uint16_t tile_index
+    const ultra::Tileset::Attributes& attributes
   ) : sprite(
         tileset,
+        animation_name,
+        animation_controls,
         position,
-        attributes,
-        tile_index
+        attributes
+      ),
+      sprite_handle(ultra::renderer::load_sprites(&sprite, 1, &handle, 1)),
+      Entity() {}
+
+  SingleSpriteEntity::SingleSpriteEntity(
+    const ultra::Tileset& tileset,
+    uint16_t tile_index,
+    const ultra::renderer::TilesetHandle* handle,
+    const ultra::geometry::Vector<float>& position,
+    const ultra::Tileset::Attributes& attributes
+  ) : sprite(
+        tileset,
+        tile_index,
+        position,
+        attributes
       ),
       sprite_handle(ultra::renderer::load_sprites(&sprite, 1, &handle, 1)),
       Entity() {}
@@ -117,16 +134,14 @@ namespace example {
   }
 
   bool SingleSpriteEntity::animate(
+    ultra::Hash animation_name,
+    const ultra::AnimatedSprite::AnimationControls& animation_controls,
     ultra::Hash collision_box_type,
     const ultra::World::Boundaries& boundaries,
-    ultra::AnimatedSprite::AnimationControls animation_controls,
     bool force_restart
   ) {
-    if (!force_restart
-        && animation_controls == sprite.animation.animation_controls) {
-      return true;
-    }
     ultra::AnimatedSprite::Animation next = sprite.animation.set(
+      animation_name,
       animation_controls,
       force_restart
     );
@@ -144,7 +159,7 @@ namespace example {
       return false;
     }
     sprite.position += can_set.second;
-    sprite.animate(animation_controls, force_restart);
+    sprite.animate(animation_name, animation_controls, force_restart);
     return true;
   }
 

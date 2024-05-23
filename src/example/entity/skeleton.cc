@@ -19,22 +19,23 @@ namespace example {
 
     Skeleton(
       const ultra::Tileset& tileset,
+      uint16_t tile_index,
       const ultra::renderer::TilesetHandle* handle,
       const ultra::geometry::Vector<float>& position,
       ultra::Tileset::Attributes attributes,
-      uint16_t tile_index,
       const ultra::World::Boundaries& boundaries
     ) : SingleSpriteEntity(
           tileset,
+          tile_index,
           handle,
           position,
-          attributes,
-          tile_index
+          attributes
         ) {
       animate(
+        ultra::hash("walk"_h),
+        ultra::AnimatedSprite::AnimationControls(),
         ultra::hash("collision"_h),
-        boundaries,
-        ultra::AnimatedSprite::AnimationControls(ultra::hash("walk"_h))
+        boundaries
       );
     }
 
@@ -127,10 +128,10 @@ extern "C" example::SingleSpriteEntity* create_entity(
 ) {
   return new example::Skeleton(
     tileset,
+    tile_index,
     handle,
     position,
     attributes,
-    tile_index,
     boundaries
   );
 }

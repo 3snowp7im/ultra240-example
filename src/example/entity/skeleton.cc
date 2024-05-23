@@ -33,7 +33,7 @@ namespace example {
         ) {
       animate(
         ultra::hash("walk"_h),
-        ultra::AnimatedSprite::AnimationControls(),
+        ultra::AnimatedSprite::Controls(),
         ultra::hash("collision"_h),
         boundaries
       );

@@ -4,15 +4,15 @@ namespace example {
 
   SingleSpriteEntity::SingleSpriteEntity(
     const ultra::Tileset& tileset,
-    ultra::Hash animation_name,
-    const ultra::AnimatedSprite::AnimationControls& animation_controls,
+    ultra::Hash name,
+    const ultra::AnimatedSprite::Controls& controls,
     const ultra::renderer::TilesetHandle* handle,
     const ultra::geometry::Vector<float>& position,
     const ultra::Tileset::Attributes& attributes
   ) : sprite(
         tileset,
-        animation_name,
-        animation_controls,
+        name,
+        controls,
         position,
         attributes
       ),
@@ -134,15 +134,15 @@ namespace example {
   }
 
   bool SingleSpriteEntity::animate(
-    ultra::Hash animation_name,
-    const ultra::AnimatedSprite::AnimationControls& animation_controls,
+    ultra::Hash name,
+    const ultra::AnimatedSprite::Controls& controls,
     ultra::Hash collision_box_type,
     const ultra::World::Boundaries& boundaries,
     bool force_restart
   ) {
     ultra::AnimatedSprite::Animation next = sprite.animation.set(
-      animation_name,
-      animation_controls,
+      name,
+      controls,
       force_restart
     );
     auto can_set = can_set_tile_index(
@@ -159,7 +159,7 @@ namespace example {
       return false;
     }
     sprite.position += can_set.second;
-    sprite.animate(animation_name, animation_controls, force_restart);
+    sprite.animate(name, controls, force_restart);
     return true;
   }
 

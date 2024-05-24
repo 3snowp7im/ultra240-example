@@ -31,6 +31,7 @@ struct Vertex {
   float a_color0[4];
 };
 
+static SDL_Rect bounds;
 static struct { float x, y; } draw_size, draw_offset;
 
 static ultra::renderer::Transform vertex_transforms[MAX_TILES];
@@ -297,6 +298,12 @@ static void render(
     id++;
   }
 
+  // Clear screen.
+  bgfx::setViewRect(id, 0, 0, bounds.w, bounds.h);
+  bgfx::setViewClear(id, BGFX_CLEAR_COLOR, 0x000000ff);
+  bgfx::touch(id);
+  id++;
+
   // Draw rendered texture to screen.
   bgfx::setState(BGFX_STATE_WRITE_RGB);
   bgfx::setVertexBuffer(0, rendered_vertex_buffer);
@@ -426,7 +433,6 @@ int main() {
   }
 
   // Get display size.
-  SDL_Rect bounds;
   if (SDL_GetDisplayBounds(0, &bounds) != 0) {
     std::string sdl_error(SDL_GetError());
     throw std::runtime_error("Could not get display bounds: " + sdl_error);

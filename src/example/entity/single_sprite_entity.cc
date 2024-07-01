@@ -16,8 +16,7 @@ namespace example {
         position,
         attributes
       ),
-      sprite_handle(ultra::renderer::load_sprites(&sprite, 1, &handle, 1)),
-      Entity() {}
+      sprite_handle(ultra::renderer::load_sprites(&sprite, 1, &handle, 1)) {}
 
   SingleSpriteEntity::SingleSpriteEntity(
     const ultra::Tileset& tileset,
@@ -31,8 +30,7 @@ namespace example {
         position,
         attributes
       ),
-      sprite_handle(ultra::renderer::load_sprites(&sprite, 1, &handle, 1)),
-      Entity() {}
+      sprite_handle(ultra::renderer::load_sprites(&sprite, 1, &handle, 1)) {}
 
   SingleSpriteEntity::~SingleSpriteEntity() {}
 
